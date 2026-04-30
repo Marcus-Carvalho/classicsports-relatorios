@@ -21,7 +21,10 @@ _spec = importlib.util.spec_from_file_location("config", _cfg_path)
 _cfg  = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_cfg)
 
-CHROME_ORIGINAL = _cfg.CHROME_PROFILE_DIR
+# Detecta Chrome Profile automaticamente na maquina do usuario
+import os as _os2
+_chrome_auto = _os2.path.join(_os2.path.expanduser('~'), 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
+CHROME_ORIGINAL = getattr(_cfg, 'CHROME_PROFILE_DIR', _chrome_auto) if _cfg else _chrome_auto
 PERFIL          = "Profile 12"
 LOGIN_URL       = "https://app.sportbayhub.com.br/login"
 URL_ANUNCIOS    = "https://app.sportbayhub.com.br/produtos"
@@ -77,20 +80,66 @@ def fazer_procv_completo():
     arq_resultado = PASTA_SAIDA / "listas_de_anuncios_COM_SKU_CUSTO_MARGEM.xlsx"
     pasta_scripts = Path(__file__).parent
 
-    # Tenta o nome exato do config, se nao achar busca por nome aproximado
+    # Localiza arquivo de tabela — busca em múltiplas pastas com fallback inteligente
     def localizar_arquivo(pasta, nome_cfg):
+        if not nome_cfg:
+            return pasta / "nao_configurado.xlsx"
+
+        # 1. Nome exato na pasta do script (tmp_usuario)
         arq = pasta / nome_cfg
         if arq.exists():
             return arq
-        # Busca por arquivos xlsx com palavras-chave do nome
-        palavras = nome_cfg.lower().replace("-","_").replace(".xlsx","").split("_")
-        palavras = [p for p in palavras if len(p) > 3]  # ignora partes curtas
-        for f in pasta.glob("*.xlsx"):
-            nome_f = f.name.lower().replace("-","_")
-            if all(p in nome_f for p in palavras[:2]):  # pelo menos 2 palavras batem
-                print(f"  [INFO] Usando '{f.name}' no lugar de '{nome_cfg}'")
-                return f
-        return arq  # retorna o original (nao existe, sera avisado)
+
+        # 2. Nome exato na pasta PAI (raiz de instalação: C:\ClassicSportsApps\Relatorios)
+        arq_pai = pasta.parent / nome_cfg
+        if arq_pai.exists():
+            print(f"  [INFO] Tabela encontrada na pasta pai: {arq_pai}")
+            return arq_pai
+
+        # 3. Busca por similaridade em ambas as pastas
+        palavras = [p for p in nome_cfg.lower().replace("-","_").replace(" ","_")
+                    .replace(".xlsx","").split("_") if len(p) > 3]
+
+        for busca_pasta in [pasta, pasta.parent]:
+            for xlsx in busca_pasta.glob("*.xlsx"):
+                nome_f = xlsx.name.lower().replace("-","_").replace(" ","_")
+                matches = sum(1 for p in palavras if p in nome_f)
+                if matches >= 2 or (len(palavras) == 1 and palavras[0] in nome_f):
+                    print(f"  [INFO] Usando '{xlsx.name}' no lugar de '{nome_cfg}'")
+                    return xlsx
+
+        # 4. Busca por tipo de tabela (precos/kits) independente do nome
+        tipo_map = {
+            "precos": ["preco", "price", "custo", "tabela"],
+            "kits": ["kit", "meus_kit", "composicao"],
+            "sku_kits": ["sku", "kit", "preco_sku"],
+        }
+        nome_lower = nome_cfg.lower()
+        tipo = None
+        if "meus" in nome_lower and "kit" in nome_lower:
+            tipo = "kits"
+        elif "sku" in nome_lower and "kit" in nome_lower:
+            tipo = "sku_kits"
+        elif "preco" in nome_lower or "tabela" in nome_lower:
+            tipo = "precos"
+
+        if tipo:
+            palavras_tipo = tipo_map[tipo]
+            for busca_pasta in [pasta, pasta.parent]:
+                candidatos = []
+                for xlsx in busca_pasta.glob("*.xlsx"):
+                    nome_f = xlsx.name.lower().replace("-","_")
+                    score = sum(1 for p in palavras_tipo if p in nome_f)
+                    if score >= 1:
+                        candidatos.append((score, xlsx))
+                if candidatos:
+                    candidatos.sort(key=lambda x: -x[0])
+                    melhor = candidatos[0][1]
+                    print(f"  [INFO] Melhor match para '{nome_cfg}': '{melhor.name}'")
+                    return melhor
+
+        print(f"  [AVISO] Tabela nao encontrada: '{nome_cfg}'")
+        return arq  # retorna original (não existe — será avisado depois)
 
     arq_tabela_precos  = localizar_arquivo(pasta_scripts, _cfg.TABELA_PRECOS)
     arq_preco_sku_kits = localizar_arquivo(pasta_scripts, _cfg.TABELA_PRECO_SKU_KITS)
@@ -120,7 +169,28 @@ def fazer_procv_completo():
 
     df_anuncios  = pd.read_excel(arq_anuncios)
     df_sku_tab   = pd.read_excel(arq_mlb_sku)
-    df_precos    = pd.read_excel(arq_tabela_precos, skiprows=1) if arq_tabela_precos.exists() else pd.DataFrame()
+    # Detecta se a tabela de precos tem linha de titulo antes do cabecalho
+    def ler_tabela_precos(arq):
+        if not arq.exists():
+            return pd.DataFrame()
+        # Tenta sem skiprows primeiro — se tiver coluna SKU, esta correto
+        df_test = pd.read_excel(arq)
+        colunas_norm = [str(c).lower().replace(" ","").replace("_","") for c in df_test.columns]
+        if any("sku" in c for c in colunas_norm):
+            return df_test
+        # Tenta com skiprows=1
+        df_skip = pd.read_excel(arq, skiprows=1)
+        colunas_norm2 = [str(c).lower().replace(" ","").replace("_","") for c in df_skip.columns]
+        if any("sku" in c for c in colunas_norm2):
+            return df_skip
+        # Tenta skiprows=0 a 3
+        for skip in range(0, 4):
+            df_try = pd.read_excel(arq, skiprows=skip)
+            cols = [str(c).lower() for c in df_try.columns]
+            if any("sku" in c for c in cols):
+                return df_try
+        return df_test  # retorna sem skiprows como fallback
+    df_precos    = ler_tabela_precos(arq_tabela_precos)
     df_kits      = pd.read_excel(arq_preco_sku_kits)            if arq_preco_sku_kits.exists() else pd.DataFrame()
     df_meus_kits = pd.read_excel(arq_meus_kits)                 if arq_meus_kits.exists()      else pd.DataFrame()
 
@@ -140,7 +210,7 @@ def fazer_procv_completo():
     if not df_precos.empty and "SKU" in df_precos.columns:
         df_precos["_SK"] = df_precos["SKU"].str.strip().str.upper()
         col_cg = detectar_coluna(df_precos, ["custo geral","custo_geral"])
-        col_mg = detectar_coluna(df_precos, ["margem"])
+        col_mg = detectar_coluna(df_precos, ["margem minima","margem_minima","margem min","margem"])
         if col_cg: lookup_sku_custo  = df_precos.set_index("_SK")[col_cg].to_dict()
         if col_mg: lookup_sku_margem = df_precos.set_index("_SK")[col_mg].to_dict()
 
@@ -176,11 +246,20 @@ def fazer_procv_completo():
         if sku in custo_kit_sis:         return custo_kit_sis[sku]
         return None
 
+    MARGEM_PADRAO = getattr(_cfg, "MARGEM_PADRAO", 16)
+
     def buscar_margem(row):
         sku = str(row.get("SKU","")).strip().upper() if pd.notna(row.get("SKU")) else ""
-        if sku in lookup_sku_margem and pd.notna(lookup_sku_margem.get(sku)):
-            return lookup_sku_margem[sku]
-        return 16
+        # Busca margem por SKU na tabela de preços
+        if sku and sku in lookup_sku_margem:
+            val = lookup_sku_margem.get(sku)
+            if pd.notna(val):
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        # SKU não encontrado na tabela — usa margem padrão
+        return MARGEM_PADRAO
 
     df_anuncios["Custo"]             = df_anuncios.apply(buscar_custo, axis=1)
     df_anuncios["Margem Minima (%)"] = df_anuncios.apply(buscar_margem, axis=1)
@@ -289,11 +368,17 @@ def fazer_procv_completo():
     print("  [OK] Arquivo final salvo: listas_de_anuncios_COM_SKU_CUSTO_MARGEM.xlsx")
 
 def detectar_coluna(df, palavras_chave):
+    """Detecta coluna ignorando acentos, espaços, underscores, parênteses e %."""
+    import unicodedata
+    def _norm(s):
+        s = str(s).lower().strip()
+        s = "".join(c for c in unicodedata.normalize("NFD", s)
+                    if unicodedata.category(c) != "Mn")
+        return s.replace(" ","").replace("_","").replace("(","").replace(")","").replace("%","").replace(".","")
     for col in df.columns:
-        col_lower = str(col).lower().strip().replace(" ", "").replace("_", "")
+        col_n = _norm(col)
         for palavra in palavras_chave:
-            p = palavra.lower().replace(" ", "").replace("_", "")
-            if p in col_lower:
+            if _norm(palavra) in col_n:
                 return col
     return None
 
@@ -313,7 +398,7 @@ async def main():
         async with async_playwright() as p:
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=str(tmp_dir),
-                channel="chrome",
+                channel="chrome",  # Usa Chrome instalado do usuario
                 headless=False,
                 accept_downloads=True,
                 args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-infobars"],
@@ -324,7 +409,10 @@ async def main():
 
             # LOGIN
             print("[LOGIN] Abrindo SportBay Hub...")
-            await page.goto(LOGIN_URL, wait_until="networkidle")
+            try:
+                await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass  # Continua mesmo se timeout no goto
             await page.wait_for_timeout(2000)
 
             if "login" in page.url.lower():
@@ -356,7 +444,7 @@ async def main():
                     await page.click("button:has-text('Login')", timeout=10000)
                 except Exception:
                     pass
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(3000)
 
                 # Aguarda o usuario completar todo o login (incluindo MFA se necessario)
                 print("  Aguardando conclusao do login (incluindo MFA se necessario)...")
@@ -366,34 +454,40 @@ async def main():
                     url_atual = page.url.lower()
                     # Saiu do login = sucesso
                     if "login" not in url_atual:
+                        print("  [OK] Login concluido! URL: " + page.url)
                         break
                     # Detecta MFA pela presenca do campo de codigo ou botao Validar
                     try:
                         tem_mfa = await page.evaluate("""
                             () => {
-                                var btn = document.querySelector('button');
-                                var inp = document.querySelector('input');
-                                return (btn && btn.innerText.includes('Validar')) ||
-                                       document.body.innerText.includes('MFA') ||
-                                       document.body.innerText.includes('Autenticacao') ||
-                                       document.body.innerText.includes('Autenticação') ||
-                                       document.body.innerText.includes('Verificacao') ||
-                                       document.body.innerText.includes('Verificação') ||
-                                       document.body.innerText.includes('Escolha um metodo') ||
-                                       document.body.innerText.includes('Escolha um método');
+                                var texto = document.body.innerText || '';
+                                return texto.includes('Validar') ||
+                                       texto.includes('MFA') ||
+                                       texto.includes('Autenticac') ||
+                                       texto.includes('Verificac') ||
+                                       texto.includes('Escolha um m') ||
+                                       texto.includes('codigo') ||
+                                       texto.includes('código');
                             }
                         """)
                         if tem_mfa and not mfa_avisado:
                             mfa_avisado = True
+                            print("  [MFA] Autenticacao em 2 fatores detectada!")
                             popup_done_mfa = threading.Event()
                             def show_popup_mfa():
-                                _popup("Autenticacao em 2 fatores (MFA) detectada!\n\n1. Escolha o metodo (E-mail ou Autenticador)\n2. Digite o codigo recebido\n3. Clique em Validar Codigo\n\nDepois clique OK aqui para continuar.")
+                                _popup("Autenticacao em 2 fatores detectada!\n\n1. Escolha o metodo no navegador\n2. Digite o codigo recebido\n3. Clique em Validar Codigo\n\nDepois clique OK aqui.")
                                 popup_done_mfa.set()
                             t_mfa = threading.Thread(target=show_popup_mfa)
                             t_mfa.start()
                             while not popup_done_mfa.is_set():
                                 await page.wait_for_timeout(500)
-                            mfa_avisado = False  # reseta para detectar proxima etapa
+                            print("  [MFA] Usuario confirmou - aguardando redirecionamento...")
+                            # Aguarda ate 60s para sair do login apos MFA
+                            for _w in range(60):
+                                if "login" not in page.url.lower():
+                                    break
+                                await page.wait_for_timeout(1000)
+                            mfa_avisado = False
                     except Exception:
                         pass
                     await page.wait_for_timeout(1000)
@@ -403,7 +497,11 @@ async def main():
                     await context.close()
                     return
 
-                await page.wait_for_load_state("networkidle")
+                # Aguarda pagina carregar (com timeout curto para nao travar)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass  # Continua mesmo se timeout
                 await page.wait_for_timeout(2000)
 
                 if "login" in page.url.lower():
@@ -416,7 +514,10 @@ async def main():
 
             # RELATORIO 1: LISTA DE ANUNCIOS
             print("[RELATORIO] Abrindo Lista de Anuncios...")
-            await page.goto(URL_ANUNCIOS, wait_until="networkidle")
+            try:
+                await page.goto(URL_ANUNCIOS, wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
             await page.wait_for_timeout(2000)
 
             print("  [CONFIG] Selecionando Anuncios Ativos...")
@@ -453,7 +554,10 @@ async def main():
 
             # RELATORIO 2: MLB x ID INTERNO
             print("[RELATORIO] Abrindo MLB x ID Interno (SKU)...")
-            await page.goto(URL_MLB_SKU, wait_until="networkidle")
+            try:
+                await page.goto(URL_MLB_SKU, wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass
             await page.wait_for_timeout(2000)
 
             print("  [DOWNLOAD] Clicando em Exportar Lista de Produtos...")

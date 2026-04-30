@@ -16,7 +16,8 @@ TABELA_MEUS_KITS = "meus_kits_2026-04-08.xlsx"
 # CONFIGURACAO - LOJAS E PERFIS DO CHROME
 # ═══════════════════════════════════════════════════════════════
 
-CHROME_PROFILE_DIR = r"C:\Users\Marcus Vinicius\AppData\Local\Google\Chrome\User Data"
+import os as _os
+CHROME_PROFILE_DIR = _os.path.join(_os.path.expanduser("~"), "AppData", "Local", "Google", "Chrome", "User Data")
 
 LOJAS = [
     ("Classic Barracao", "Profile 1",  "acessorioscarrosantigos@gmail.com", "YnZiUg3YF58k!Gd"),
