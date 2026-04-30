@@ -21,7 +21,7 @@ GITHUB_BRANCH  = "main"
 
 # URLs base
 URL_VERSION = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/versao.json"
-URL_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/arquivos"
+URL_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}"
 
 PASTA_LOCAL = Path(__file__).parent
 ARQ_VERSION_LOCAL = PASTA_LOCAL / "versao.json"
