@@ -67,7 +67,9 @@ PASTA_SAIDA.mkdir(exist_ok=True)
 
 # ── POPUP ─────────────────────────────────────────────────────
 def _popup(msg):
-    _ctypes.windll.user32.MessageBoxW(0, msg, "SportBay Automacao", 1)
+    # MB_OKCANCEL=1 | MB_SETFOREGROUND=0x10000 | MB_SYSTEMMODAL=0x1000
+    # Garante que o popup aparece na frente, sem ficar minimizado
+    _ctypes.windll.user32.MessageBoxW(0, msg, "SportBay Automacao", 1 | 0x10000 | 0x1000)
 
 
 # ── COPIA PERFIL ──────────────────────────────────────────────
@@ -385,20 +387,23 @@ async def main():
                 await page.type("input[placeholder='Senha']", SENHA, delay=80)
                 await page.wait_for_timeout(400)
 
-                popup_done = threading.Event()
-                def show_popup():
-                    _popup("Verifique se apareceu CAPTCHA no navegador.\nSe sim, resolva-o primeiro.\nDepois clique OK para fazer o login.")
-                    popup_done.set()
-                t = threading.Thread(target=show_popup)
-                t.start()
-                while not popup_done.is_set():
-                    await page.wait_for_timeout(500)
-
+                # Clica em Login primeiro
                 try:
                     await page.click("button:has-text('Login')", timeout=10000)
                 except Exception:
                     pass
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(5000)
+
+                # Se ainda estiver na pagina de login, provavelmente apareceu CAPTCHA
+                if "login" in page.url.lower():
+                    popup_done = threading.Event()
+                    def show_popup():
+                        _popup("CAPTCHA detectado!\n\nPor favor:\n1. Resolva o CAPTCHA no navegador\n2. Clique OK aqui para continuar")
+                        popup_done.set()
+                    t = threading.Thread(target=show_popup)
+                    t.start()
+                    while not popup_done.is_set():
+                        await page.wait_for_timeout(500)
 
                 # Aguarda o usuario completar todo o login (incluindo MFA se necessario)
                 print("  Aguardando conclusao do login (incluindo MFA se necessario)...")
@@ -489,14 +494,15 @@ async def main():
             """)
             await page.wait_for_timeout(500)
 
-            print("  [BUSCANDO] Clicando em Buscar...")
-            await page.click("#btnBuscar")
-            await page.wait_for_function("""
-                () => {
-                    var btn = document.querySelector('#btnExportar');
-                    return btn && !btn.classList.contains('disabled');
-                }
-            """, timeout=60000)
+            # Aguarda o botao de exportar ficar disponivel (sem precisar clicar em Buscar)
+            print("  [AGUARDANDO] Aguardando resultados carregarem...")
+            try:
+                await page.wait_for_function(
+                    "() => { var btn = document.querySelector('#btnExportar'); return btn && !btn.classList.contains('disabled'); }",
+                    timeout=30000
+                )
+            except Exception:
+                pass
             print("  [OK] Resultados carregados!")
 
             print("  [DOWNLOAD] Exportando Excel...")
