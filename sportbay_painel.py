@@ -81,7 +81,17 @@ def _verificar_deps():
 _verificar_deps()
 ARQ_USUARIOS = PASTA_DADOS / "usuarios.json"
 ARQ_CONFIG   = PASTA / "config.py"
-VERSAO_ATUAL = "1.0.0"
+def _ler_versao_local():
+    """Lê a versão do versao.json local."""
+    arq = PASTA / "versao.json"
+    if not arq.exists():
+        return "1.0.0"
+    try:
+        return json.loads(arq.read_text(encoding="utf-8")).get("versao", "1.0.0")
+    except Exception:
+        return "1.0.0"
+
+VERSAO_ATUAL = _ler_versao_local()
 
 BG      = "#001228"
 HEADER  = "#00142E"
@@ -163,17 +173,16 @@ def load_cfg():
 def save_cfg_val(chave,valor):
     if not ARQ_CONFIG.exists():
         _criar_config_padrao()
-    lines=[]
-    encontrou = False
-    for l in ARQ_CONFIG.read_text(encoding="utf-8").splitlines():
-        if l.strip().startswith(chave+" ="):
-            lines.append(f'{chave} = "{valor}"')
-            encontrou = True
-        else:
-            lines.append(l)
-    if not encontrou:
-        lines.append(f'{chave} = "{valor}"')
-    ARQ_CONFIG.write_text("\n".join(lines),encoding="utf-8")
+    import re as _re
+    txt = ARQ_CONFIG.read_text(encoding="utf-8")
+    # Substitui a linha existente (independente de espaços extras)
+    padrao = _re.compile(r'^' + _re.escape(chave) + r'\s*=.*$', _re.MULTILINE)
+    nova_linha = chave + ' = "' + valor.replace('\\','\\\\') + '"'
+    if padrao.search(txt):
+        txt = padrao.sub(nova_linha, txt)
+    else:
+        txt = txt.rstrip() + "\n" + nova_linha + "\n"
+    ARQ_CONFIG.write_text(txt, encoding="utf-8")
 
 def set_icon(win):
     try:
@@ -731,7 +740,7 @@ class App:
             _upd()
             def upload(c=chave, v=var, upd=_upd):
                 p = filedialog.askopenfilename(
-                    title=f"Selecione o arquivo",
+                    title="Selecione o arquivo",
                     filetypes=[("Excel","*.xlsx *.xls"),("Todos","*.*")])
                 if not p: return
                 src = Path(p)
@@ -741,10 +750,18 @@ class App:
                     v.set(src.name)
                     save_cfg_val(c, src.name)
                     upd()
-                    messagebox.showinfo("Sucesso",
-                        f"Arquivo copiado com sucesso!\n\n"
-                        f"Arquivo: {src.name}\n"
-                        f"Local: {dst}")
+                    # Recarrega config para confirmar que salvou
+                    cfg_check = load_cfg()
+                    val_salvo = getattr(cfg_check, c, "") if cfg_check else ""
+                    if val_salvo != src.name:
+                        messagebox.showwarning("Aviso",
+                            "Arquivo copiado mas pode haver problema ao salvar configuracao.\n"
+                            "Verifique as permissoes da pasta.")
+                    else:
+                        messagebox.showinfo("Sucesso",
+                            "Arquivo copiado com sucesso!\n\n"
+                            "Arquivo: " + src.name + "\n"
+                            "Local: " + str(dst))
                 except Exception as e:
                     messagebox.showerror("Erro ao copiar arquivo", str(e))
             tk.Button(fr, text="📂", font=("Arial",10), bg=BLUE, fg="white",
