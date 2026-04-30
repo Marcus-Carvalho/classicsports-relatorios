@@ -151,6 +151,14 @@ def verificar_e_atualizar(callback_progresso=None, callback_fim=None, silencioso
 
         if not erros:
             salvar_versao_local(versao_remote, notas)
+            # Apaga credenciais.enc para forçar reconfiguração na próxima abertura.
+            # Cada máquina precisa gerar seu próprio .enc com a chave local.
+            arq_cred = PASTA_LOCAL / "dados" / "credenciais.enc"
+            if arq_cred.exists():
+                try:
+                    arq_cred.unlink()
+                except Exception:
+                    pass
 
         if callback_fim:
             callback_fim(True, versao_remote, notas)

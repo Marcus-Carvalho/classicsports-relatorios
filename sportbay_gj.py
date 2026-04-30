@@ -29,9 +29,37 @@ PERFIL          = "Profile 5"
 LOGIN_URL       = "https://app.sportbayhub.com.br/login"
 URL_ANUNCIOS    = "https://app.sportbayhub.com.br/produtos"
 URL_MLB_SKU     = "https://app.sportbayhub.com.br/produtos/upload_id"
-EMAIL           = "classic.sports.brasil@gmail.com"
-SENHA           = "V@AqcJ47uwch@qy"
 NOME_LOJA       = "GJ"
+
+def _carregar_cred_loja(nome_loja):
+    """Le email/senha do arquivo criptografado dados/credenciais.enc."""
+    import base64, hashlib, json, os, socket, struct
+    from pathlib import Path
+    arq = Path(__file__).parent.parent / "dados" / "credenciais.enc"
+    if not arq.exists():
+        arq = Path(__file__).parent / "dados" / "credenciais.enc"
+    if not arq.exists():
+        raise FileNotFoundError("Credenciais nao encontradas: " + str(arq) + ". Execute o painel Classic Sports.")
+    def _decrypt(token):
+        key = hashlib.sha256(socket.gethostname().upper().strip().encode()).digest()
+        raw = base64.b64decode(token.encode())
+        iv, ct = raw[:16], raw[32:]
+        if raw[16:32] != hashlib.sha256(key + iv + ct).digest()[:16]:
+            raise ValueError("Credenciais corrompidas ou maquina diferente.")
+        ks, i = b"", 0
+        while len(ks) < len(ct):
+            ks += hashlib.sha256(key + iv + struct.pack(">I", i)).digest()
+            i  += 1
+        return bytes(a ^ b for a, b in zip(ct, ks)).decode("utf-8")
+    creds = json.loads(_decrypt(arq.read_text(encoding="utf-8")))
+    loja  = creds.get(nome_loja, {})
+    if not loja:
+        raise KeyError("Credenciais para loja " + nome_loja + " nao encontradas. Configure no painel > aba SENHAS.")
+    return loja.get("email", ""), loja.get("senha", "")
+
+_EMAIL_CRED, _SENHA_CRED = _carregar_cred_loja(NOME_LOJA)
+EMAIL = _EMAIL_CRED
+SENHA = _SENHA_CRED
 NOME_ARQUIVO    = "gj"
 
 PASTA_SAIDA = Path(__file__).parent / f"relatorios_{NOME_ARQUIVO}"
@@ -48,6 +76,14 @@ def copiar_perfil():
     origem  = Path(CHROME_ORIGINAL) / PERFIL
     destino = tmp / "Default"
     print("  [COPIANDO] Copiando perfil...")
+
+    # Se o perfil nao existir nesta maquina, cria pasta vazia.
+    # O Chrome inicializa o perfil do zero automaticamente.
+    if not origem.exists():
+        print("  [INFO] Perfil '" + PERFIL + "' nao encontrado. Criando perfil novo...")
+        destino.mkdir(parents=True, exist_ok=True)
+        print("  [OK] Pasta criada! Chrome ira inicializar o perfil.")
+        return tmp
 
     def copiar_ignorando_erros(src, dst, ignore=None):
         os.makedirs(dst, exist_ok=True)
@@ -80,66 +116,20 @@ def fazer_procv_completo():
     arq_resultado = PASTA_SAIDA / "listas_de_anuncios_COM_SKU_CUSTO_MARGEM.xlsx"
     pasta_scripts = Path(__file__).parent
 
-    # Localiza arquivo de tabela — busca em múltiplas pastas com fallback inteligente
+    # Tenta o nome exato do config, se nao achar busca por nome aproximado
     def localizar_arquivo(pasta, nome_cfg):
-        if not nome_cfg:
-            return pasta / "nao_configurado.xlsx"
-
-        # 1. Nome exato na pasta do script (tmp_usuario)
         arq = pasta / nome_cfg
         if arq.exists():
             return arq
-
-        # 2. Nome exato na pasta PAI (raiz de instalação: C:\ClassicSportsApps\Relatorios)
-        arq_pai = pasta.parent / nome_cfg
-        if arq_pai.exists():
-            print(f"  [INFO] Tabela encontrada na pasta pai: {arq_pai}")
-            return arq_pai
-
-        # 3. Busca por similaridade em ambas as pastas
-        palavras = [p for p in nome_cfg.lower().replace("-","_").replace(" ","_")
-                    .replace(".xlsx","").split("_") if len(p) > 3]
-
-        for busca_pasta in [pasta, pasta.parent]:
-            for xlsx in busca_pasta.glob("*.xlsx"):
-                nome_f = xlsx.name.lower().replace("-","_").replace(" ","_")
-                matches = sum(1 for p in palavras if p in nome_f)
-                if matches >= 2 or (len(palavras) == 1 and palavras[0] in nome_f):
-                    print(f"  [INFO] Usando '{xlsx.name}' no lugar de '{nome_cfg}'")
-                    return xlsx
-
-        # 4. Busca por tipo de tabela (precos/kits) independente do nome
-        tipo_map = {
-            "precos": ["preco", "price", "custo", "tabela"],
-            "kits": ["kit", "meus_kit", "composicao"],
-            "sku_kits": ["sku", "kit", "preco_sku"],
-        }
-        nome_lower = nome_cfg.lower()
-        tipo = None
-        if "meus" in nome_lower and "kit" in nome_lower:
-            tipo = "kits"
-        elif "sku" in nome_lower and "kit" in nome_lower:
-            tipo = "sku_kits"
-        elif "preco" in nome_lower or "tabela" in nome_lower:
-            tipo = "precos"
-
-        if tipo:
-            palavras_tipo = tipo_map[tipo]
-            for busca_pasta in [pasta, pasta.parent]:
-                candidatos = []
-                for xlsx in busca_pasta.glob("*.xlsx"):
-                    nome_f = xlsx.name.lower().replace("-","_")
-                    score = sum(1 for p in palavras_tipo if p in nome_f)
-                    if score >= 1:
-                        candidatos.append((score, xlsx))
-                if candidatos:
-                    candidatos.sort(key=lambda x: -x[0])
-                    melhor = candidatos[0][1]
-                    print(f"  [INFO] Melhor match para '{nome_cfg}': '{melhor.name}'")
-                    return melhor
-
-        print(f"  [AVISO] Tabela nao encontrada: '{nome_cfg}'")
-        return arq  # retorna original (não existe — será avisado depois)
+        # Busca por arquivos xlsx com palavras-chave do nome
+        palavras = nome_cfg.lower().replace("-","_").replace(".xlsx","").split("_")
+        palavras = [p for p in palavras if len(p) > 3]  # ignora partes curtas
+        for f in pasta.glob("*.xlsx"):
+            nome_f = f.name.lower().replace("-","_")
+            if all(p in nome_f for p in palavras[:2]):  # pelo menos 2 palavras batem
+                print(f"  [INFO] Usando '{f.name}' no lugar de '{nome_cfg}'")
+                return f
+        return arq  # retorna o original (nao existe, sera avisado)
 
     arq_tabela_precos  = localizar_arquivo(pasta_scripts, _cfg.TABELA_PRECOS)
     arq_preco_sku_kits = localizar_arquivo(pasta_scripts, _cfg.TABELA_PRECO_SKU_KITS)
@@ -169,28 +159,7 @@ def fazer_procv_completo():
 
     df_anuncios  = pd.read_excel(arq_anuncios)
     df_sku_tab   = pd.read_excel(arq_mlb_sku)
-    # Detecta se a tabela de precos tem linha de titulo antes do cabecalho
-    def ler_tabela_precos(arq):
-        if not arq.exists():
-            return pd.DataFrame()
-        # Tenta sem skiprows primeiro — se tiver coluna SKU, esta correto
-        df_test = pd.read_excel(arq)
-        colunas_norm = [str(c).lower().replace(" ","").replace("_","") for c in df_test.columns]
-        if any("sku" in c for c in colunas_norm):
-            return df_test
-        # Tenta com skiprows=1
-        df_skip = pd.read_excel(arq, skiprows=1)
-        colunas_norm2 = [str(c).lower().replace(" ","").replace("_","") for c in df_skip.columns]
-        if any("sku" in c for c in colunas_norm2):
-            return df_skip
-        # Tenta skiprows=0 a 3
-        for skip in range(0, 4):
-            df_try = pd.read_excel(arq, skiprows=skip)
-            cols = [str(c).lower() for c in df_try.columns]
-            if any("sku" in c for c in cols):
-                return df_try
-        return df_test  # retorna sem skiprows como fallback
-    df_precos    = ler_tabela_precos(arq_tabela_precos)
+    df_precos    = pd.read_excel(arq_tabela_precos, skiprows=1) if arq_tabela_precos.exists() else pd.DataFrame()
     df_kits      = pd.read_excel(arq_preco_sku_kits)            if arq_preco_sku_kits.exists() else pd.DataFrame()
     df_meus_kits = pd.read_excel(arq_meus_kits)                 if arq_meus_kits.exists()      else pd.DataFrame()
 
@@ -210,7 +179,7 @@ def fazer_procv_completo():
     if not df_precos.empty and "SKU" in df_precos.columns:
         df_precos["_SK"] = df_precos["SKU"].str.strip().str.upper()
         col_cg = detectar_coluna(df_precos, ["custo geral","custo_geral"])
-        col_mg = detectar_coluna(df_precos, ["margem minima","margem_minima","margem min","margem"])
+        col_mg = detectar_coluna(df_precos, ["margem"])
         if col_cg: lookup_sku_custo  = df_precos.set_index("_SK")[col_cg].to_dict()
         if col_mg: lookup_sku_margem = df_precos.set_index("_SK")[col_mg].to_dict()
 
@@ -246,20 +215,11 @@ def fazer_procv_completo():
         if sku in custo_kit_sis:         return custo_kit_sis[sku]
         return None
 
-    MARGEM_PADRAO = getattr(_cfg, "MARGEM_PADRAO", 16)
-
     def buscar_margem(row):
         sku = str(row.get("SKU","")).strip().upper() if pd.notna(row.get("SKU")) else ""
-        # Busca margem por SKU na tabela de preços
-        if sku and sku in lookup_sku_margem:
-            val = lookup_sku_margem.get(sku)
-            if pd.notna(val):
-                try:
-                    return float(val)
-                except (ValueError, TypeError):
-                    pass
-        # SKU não encontrado na tabela — usa margem padrão
-        return MARGEM_PADRAO
+        if sku in lookup_sku_margem and pd.notna(lookup_sku_margem.get(sku)):
+            return lookup_sku_margem[sku]
+        return 16
 
     df_anuncios["Custo"]             = df_anuncios.apply(buscar_custo, axis=1)
     df_anuncios["Margem Minima (%)"] = df_anuncios.apply(buscar_margem, axis=1)
@@ -368,17 +328,11 @@ def fazer_procv_completo():
     print("  [OK] Arquivo final salvo: listas_de_anuncios_COM_SKU_CUSTO_MARGEM.xlsx")
 
 def detectar_coluna(df, palavras_chave):
-    """Detecta coluna ignorando acentos, espaços, underscores, parênteses e %."""
-    import unicodedata
-    def _norm(s):
-        s = str(s).lower().strip()
-        s = "".join(c for c in unicodedata.normalize("NFD", s)
-                    if unicodedata.category(c) != "Mn")
-        return s.replace(" ","").replace("_","").replace("(","").replace(")","").replace("%","").replace(".","")
     for col in df.columns:
-        col_n = _norm(col)
+        col_lower = str(col).lower().strip().replace(" ", "").replace("_", "")
         for palavra in palavras_chave:
-            if _norm(palavra) in col_n:
+            p = palavra.lower().replace(" ", "").replace("_", "")
+            if p in col_lower:
                 return col
     return None
 

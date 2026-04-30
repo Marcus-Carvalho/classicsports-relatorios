@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys, os, shutil, subprocess, threading, hashlib, json, importlib.util
+import base64, socket, struct
 from pathlib import Path
 from tkinter import filedialog
 import tkinter as tk
@@ -8,6 +9,49 @@ from tkinter import ttk, messagebox, scrolledtext
 PASTA       = Path(__file__).resolve().parent
 PASTA_DADOS = PASTA / "dados"
 PASTA_DADOS.mkdir(parents=True, exist_ok=True)
+ARQ_CRED = PASTA_DADOS / "credenciais.enc"
+
+# ── CRIPTOGRAFIA DE CREDENCIAIS SPORTBAY ─────────────────────
+def _machine_key():
+    return hashlib.sha256(socket.gethostname().upper().strip().encode()).digest()
+
+def _cred_encrypt(texto):
+    key = _machine_key()
+    iv  = os.urandom(16)
+    pt  = texto.encode("utf-8")
+    ks, i = b"", 0
+    while len(ks) < len(pt):
+        ks += hashlib.sha256(key + iv + struct.pack(">I", i)).digest()
+        i  += 1
+    ct   = bytes(a ^ b for a, b in zip(pt, ks))
+    hmac = hashlib.sha256(key + iv + ct).digest()[:16]
+    return base64.b64encode(iv + hmac + ct).decode()
+
+def _cred_decrypt(token):
+    key = _machine_key()
+    raw = base64.b64decode(token.encode())
+    iv, hmac_check, ct = raw[:16], raw[16:32], raw[32:]
+    if hmac_check != hashlib.sha256(key + iv + ct).digest()[:16]:
+        raise ValueError("HMAC invalido")
+    ks, i = b"", 0
+    while len(ks) < len(ct):
+        ks += hashlib.sha256(key + iv + struct.pack(">I", i)).digest()
+        i  += 1
+    return bytes(a ^ b for a, b in zip(ct, ks)).decode("utf-8")
+
+def salvar_credenciais_enc(creds):
+    ARQ_CRED.write_text(_cred_encrypt(json.dumps(creds, ensure_ascii=False)), encoding="utf-8")
+
+def carregar_credenciais_enc():
+    if not ARQ_CRED.exists():
+        return {}
+    try:
+        return json.loads(_cred_decrypt(ARQ_CRED.read_text(encoding="utf-8")))
+    except Exception:
+        return {}
+
+def cred_enc_existe():
+    return ARQ_CRED.exists() and ARQ_CRED.stat().st_size > 0
 
 # ── VERIFICA E INSTALA DEPENDÊNCIAS AUTOMATICAMENTE ──────────
 def _verificar_deps():
@@ -79,11 +123,22 @@ def verificar_senha(u,s): d=_load(); return u in d and d[u]["senha_hash"]==_hash
 def trocar_senha_user(u,s): d=_load(); d[u]["senha_hash"]=_hash(s); d[u]["primeiro_acesso"]=False; _save(d)
 def get_user(u): return _load().get(u,{})
 def salvar_cred_loja(u,loja,email,senha):
+    # Salva no usuarios.json (compatibilidade)
     d=_load()
     if u in d:
         if "lojas" not in d[u]: d[u]["lojas"]={}
         d[u]["lojas"][loja]={"email":email,"senha":senha}; _save(d)
-def get_cred_loja(u,loja): return _load().get(u,{}).get("lojas",{}).get(loja,{"email":"","senha":""})
+    # Salva também no credenciais.enc (seguro, lido pelos scripts)
+    creds = carregar_credenciais_enc()
+    creds[loja] = {"email": email, "senha": senha}
+    salvar_credenciais_enc(creds)
+
+def get_cred_loja(u,loja):
+    # Tenta primeiro do .enc, fallback para usuarios.json
+    creds = carregar_credenciais_enc()
+    if loja in creds:
+        return creds[loja]
+    return _load().get(u,{}).get("lojas",{}).get(loja,{"email":"","senha":""})
 
 # ── CONFIG ────────────────────────────────────────────────────
 def _criar_config_padrao():
@@ -127,23 +182,21 @@ def set_icon(win):
     except: pass
 
 def gerar_script(usuario,nome_loja,script_nome):
-    import re
-    c=get_cred_loja(usuario,nome_loja)
     sb=PASTA/script_nome
     if not sb.exists():
         encontrados = list(PASTA.rglob(script_nome))
         if encontrados: sb = encontrados[0]
     if not sb.exists(): return None
-    txt=sb.read_text(encoding='utf-8')
-    txt=re.sub(r'EMAIL\s*=\s*"[^"]*"',f'EMAIL = "{c.get("email","")}"',txt)
-    txt=re.sub(r'SENHA\s*=\s*"[^"]*"',f'SENHA = "{c.get("senha","")}"',txt)
+    # Copia o script para a pasta tmp (sem injetar email/senha — scripts leem do .enc)
     pt=PASTA/f"tmp_{usuario}"; pt.mkdir(exist_ok=True)
-    st=pt/script_nome; st.write_text(txt,encoding='utf-8')
+    st=pt/script_nome
+    shutil.copy2(str(sb), str(st))
     # Garante config.py na pasta tmp
     if not ARQ_CONFIG.exists(): _criar_config_padrao()
     if ARQ_CONFIG.exists(): shutil.copy2(str(ARQ_CONFIG),str(pt/'config.py'))
+    # Garante credenciais.enc acessível pela pasta tmp (link via pasta pai)
+    # Os scripts já buscam em parent/dados/credenciais.enc automaticamente
     # Copia os arquivos de tabela para a pasta tmp
-    # (scripts buscam no diretório atual = pasta tmp)
     cfg = load_cfg()
     if cfg:
         for attr in ['TABELA_PRECOS','TABELA_PRECO_SKU_KITS','TABELA_MEUS_KITS']:
@@ -217,6 +270,8 @@ class App:
             self.usuario=u
             if get_user(u).get("primeiro_acesso",True):
                 self._tela_troca_senha()
+            elif not cred_enc_existe():
+                self._tela_config_creds()
             else:
                 self._abrir_painel()
 
@@ -259,11 +314,98 @@ class App:
             if len(n)<4: lbl_err.config(text="Mínimo 4 caracteres."); return
             if n!=c: lbl_err.config(text="As senhas não coincidem."); return
             trocar_senha_user(self.usuario,n)
-            self._abrir_painel()
+            if not cred_enc_existe():
+                self._tela_config_creds()
+            else:
+                self._abrir_painel()
 
         tk.Button(body,text="DEFINIR SENHA E ENTRAR",font=("Arial",12,"bold"),
                   bg=BLUE,fg="white",relief="flat",cursor="hand2",pady=10,
                   command=confirmar).pack(fill="x")
+
+
+    # ── TELA CONFIGURAÇÃO DE CREDENCIAIS (pós-atualização) ────
+    def _tela_config_creds(self):
+        """Exibida quando credenciais.enc não existe — pede email/senha do SportBay."""
+        self._limpar()
+        self.root.title("Classic Sports - Configurar Credenciais")
+        self.root.geometry("520x600")
+        self.root.resizable(False, False)
+        self.root.update_idletasks()
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.root.geometry("520x600+" + str((sw-520)//2) + "+" + str((sh-600)//2))
+
+        hdr = tk.Frame(self.root, bg=HEADER, height=70); hdr.pack(fill="x"); hdr.pack_propagate(False)
+        tk.Label(hdr, text="Classic ", font=("Arial",18,"bold"), bg=HEADER, fg="white").place(x=20, y=18)
+        tk.Label(hdr, text="Sports",   font=("Arial",18,"bold"), bg=HEADER, fg=CYAN).place(x=103, y=18)
+        tk.Label(hdr, text="Configuração de Credenciais", font=("Arial",9), bg=HEADER, fg=MUTED).place(x=20, y=48)
+        tk.Frame(self.root, bg=BLUE, height=2).pack(fill="x")
+
+        body = tk.Frame(self.root, bg=BG); body.pack(fill="both", expand=True)
+
+        tk.Label(body, text="Configure suas credenciais do SportBay Hub",
+                 font=("Arial",13,"bold"), bg=BG, fg=BRIGHT).pack(pady=(18,4), padx=20, anchor="w")
+        tk.Label(body,
+                 text="O sistema foi atualizado e precisa reconfigurar as credenciais nesta maquina. Configure o email e senha de cada loja abaixo.",
+                 font=("Arial",9), bg=BG, fg=MUTED, justify="left").pack(padx=20, anchor="w", pady=(0,12))
+
+        # Frame scrollável
+        outer = tk.Frame(body, bg=BG); outer.pack(fill="both", expand=True, padx=16)
+        sb2 = ttk.Scrollbar(outer, orient="vertical"); sb2.pack(side="right", fill="y")
+        cv2 = tk.Canvas(outer, bg=BG, highlightthickness=0, yscrollcommand=sb2.set)
+        cv2.pack(side="left", fill="both", expand=True)
+        sb2.config(command=cv2.yview)
+        frm2 = tk.Frame(cv2, bg=BG)
+        win2 = cv2.create_window((0,0), window=frm2, anchor="nw")
+        frm2.bind("<Configure>", lambda e: cv2.configure(scrollregion=cv2.bbox("all")))
+        cv2.bind("<Configure>", lambda e: cv2.itemconfig(win2, width=e.width))
+        cv2.bind_all("<MouseWheel>", lambda e: cv2.yview_scroll(int(-1*(e.delta/120)), "units"))
+
+        # Carrega credenciais existentes (do usuarios.json, como fallback)
+        d = _load().get(self.usuario, {}).get("lojas", {})
+        self._vars_config_creds = {}
+        for nome, _ in LOJAS:
+            c_atual = d.get(nome, {"email": "", "senha": ""})
+            row = tk.Frame(frm2, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=nome, font=("Arial",9,"bold"), bg=CARD, fg=BRIGHT,
+                     width=18, anchor="w").pack(side="left", padx=(10,4), pady=8)
+            ve = tk.StringVar(value=c_atual.get("email", ""))
+            vs = tk.StringVar(value=c_atual.get("senha", ""))
+            tk.Entry(row, textvariable=ve, font=("Arial",9), bg="#001020", fg=BRIGHT,
+                     insertbackground=CYAN, relief="flat",
+                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     width=24).pack(side="left", ipady=4, padx=(0,6))
+            tk.Entry(row, textvariable=vs, font=("Arial",9), bg="#001020", fg=BRIGHT,
+                     insertbackground=CYAN, relief="flat",
+                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     width=18, show="●").pack(side="left", ipady=4)
+            self._vars_config_creds[nome] = (ve, vs)
+
+        lbl_err2 = tk.Label(body, text="", font=("Arial",9), bg=BG, fg=DANGER)
+        lbl_err2.pack(pady=(6,0))
+
+        def salvar_e_entrar():
+            # Valida que pelo menos uma loja tem credenciais
+            creds = {}
+            for nome, (ve, vs) in self._vars_config_creds.items():
+                email = ve.get().strip()
+                senha = vs.get().strip()
+                if email or senha:
+                    creds[nome] = {"email": email, "senha": senha}
+                    # Salva também em usuarios.json
+                    salvar_cred_loja(self.usuario, nome, email, senha)
+            if not creds:
+                lbl_err2.config(text="Configure pelo menos uma loja para continuar.")
+                return
+            # Gera o credenciais.enc com todas as credenciais
+            salvar_credenciais_enc(creds)
+            self._abrir_painel()
+
+        tk.Button(body, text="Salvar e Entrar",
+                  font=("Arial",12,"bold"), bg=BLUE, fg="white",
+                  relief="flat", cursor="hand2", pady=10,
+                  command=salvar_e_entrar).pack(fill="x", padx=16, pady=(8,16))
 
     # ── PAINEL PRINCIPAL ───────────────────────────────────────
     def _abrir_painel(self):
@@ -310,9 +452,9 @@ class App:
         self.btn_params = tk.Button(self.frm_nav, text="PARÂMETROS", font=("Arial",10,"bold"),
                                     padx=14, pady=5, relief="flat", cursor="hand2",
                                     command=lambda: self._mostrar("params"))
-        tk.Button(self.frm_nav, text="🔄 Atualizações", font=("Arial",9,"bold"),
+        tk.Button(self.frm_nav, text="Atualizacoes", font=("Arial",9,"bold"),
                   bg=BTN, fg=BTN_TXT, padx=10, pady=5, relief="flat",
-                  cursor="hand2").pack(side="left", padx=(8,0))
+                  cursor="hand2", command=self._verificar_atualizacoes).pack(side="left", padx=(8,0))
         self.btn_lojas.pack(side="left", padx=2)
         self.btn_senhas.pack(side="left", padx=2)
         self.btn_params.pack(side="left", padx=2)
@@ -658,7 +800,55 @@ class App:
     def _salvar_creds(self):
         for n,(ve,vs) in self.vars_cred.items():
             salvar_cred_loja(self.usuario,n,ve.get().strip(),vs.get().strip())
-        messagebox.showinfo("Salvo","Credenciais salvas!")
+        messagebox.showinfo("Salvo","Credenciais salvas com seguranca!")
+
+    def _verificar_atualizacoes(self):
+        try:
+            from atualizador import verificar_e_atualizar, reiniciar_aplicacao
+        except ImportError:
+            messagebox.showerror("Erro","Modulo atualizador.py nao encontrado."); return
+
+        win = tk.Toplevel(self.root)
+        win.title("Atualizacoes")
+        win.geometry("400x220")
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        set_icon(win)
+        win.update_idletasks()
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry("400x220+" + str((sw-400)//2) + "+" + str((sh-220)//2))
+
+        tk.Label(win, text="Verificando atualizacoes...",
+                 font=("Arial",12,"bold"), bg=BG, fg=BRIGHT).pack(pady=(30,8))
+        lbl_msg = tk.Label(win, text="Conectando ao servidor...",
+                           font=("Arial",9), bg=BG, fg=MUTED, wraplength=360)
+        lbl_msg.pack(pady=(0,10))
+        bar = ttk.Progressbar(win, length=340, mode="determinate")
+        bar.pack(pady=6)
+        btn_ok = tk.Button(win, text="Fechar", font=("Arial",10,"bold"),
+                           bg=BTN, fg=BTN_TXT, relief="flat", cursor="hand2",
+                           pady=7, state="disabled",
+                           command=win.destroy)
+        btn_ok.pack(pady=(12,0), padx=40, fill="x")
+
+        def on_progresso(msg, pct):
+            lbl_msg.config(text=msg); bar["value"] = pct; win.update_idletasks()
+
+        def on_fim(atualizado, versao, notas):
+            bar["value"] = 100
+            if atualizado:
+                lbl_msg.config(text="Atualizado para v" + str(versao) + "! Reiniciando...")
+                win.update_idletasks()
+                win.after(1800, lambda: (win.destroy(), reiniciar_aplicacao()))
+            else:
+                lbl_msg.config(text=notas or "Ja esta na versao mais recente.")
+                btn_ok.config(state="normal")
+
+        verificar_e_atualizar(
+            callback_progresso=lambda m,p: win.after(0, on_progresso, m, p),
+            callback_fim=lambda a,v,n: win.after(0, on_fim, a, v, n),
+            silencioso=False
+        )
 
     def _alterar_senha(self):
         if not verificar_senha(self.usuario,self.vars_pw[0].get().strip()):
