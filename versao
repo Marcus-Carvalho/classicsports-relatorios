@@ -1,4 +1,4 @@
 {
-  "versao": "1.0.3",
+  "versao": "1.0.4",
   "notas": "Versão inicial — login por usuário, credenciais por loja, cálculo de custo/margem/preço mínimo, interface responsiva."
 }
