@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# Redireciona stdout/stderr para UTF-8 com seguranca
+try:
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+except Exception:
+    pass
 
 import asyncio
 import shutil
@@ -87,28 +93,40 @@ def copiar_perfil():
         print("  [OK] Pasta criada! Chrome ira inicializar o perfil.")
         return tmp
 
-    def copiar_ignorando_erros(src, dst, ignore=None):
-        os.makedirs(dst, exist_ok=True)
-        for item in os.listdir(src):
-            s = os.path.join(src, item)
-            d = os.path.join(dst, item)
-            if ignore and item in ignore(src, os.listdir(src)):
-                continue
+        # Copia apenas arquivos essenciais para nao travar com Chrome aberto
+    ARQUIVOS_ESSENCIAIS = [
+        "Cookies", "Login Data", "Login Data-journal",
+        "Web Data", "Preferences", "Secure Preferences",
+        "Local State",
+    ]
+    PASTAS_ESSENCIAIS = [
+        "Local Extension Settings",
+        "Extension State",
+        "Local Storage",
+        "Session Storage",
+    ]
+    destino.mkdir(parents=True, exist_ok=True)
+    for nome in ARQUIVOS_ESSENCIAIS:
+        src = origem / nome
+        dst = destino / nome
+        if src.exists():
             try:
-                if os.path.isdir(s):
-                    copiar_ignorando_erros(s, d, ignore)
-                else:
-                    shutil.copy2(s, d)
+                shutil.copy2(str(src), str(dst))
             except Exception:
                 pass
-
-    ignorar = shutil.ignore_patterns(
-        "*.log", "*.tmp", "GPUCache", "ShaderCache", "Code Cache",
-        "Cache", "CachedData", "DawnCache", "Cookies*", "Sessions", "Safe Browsing*"
-    )
-    copiar_ignorando_erros(str(origem), str(destino), ignorar)
+    for nome in PASTAS_ESSENCIAIS:
+        src = origem / nome
+        dst = destino / nome
+        if src.exists():
+            try:
+                shutil.copytree(str(src), str(dst), ignore=shutil.ignore_patterns(
+                    "*.log", "*.tmp", "LOCK", "*.ldb.tmp"
+                ), dirs_exist_ok=True)
+            except Exception:
+                pass
     print("  [OK] Perfil copiado!")
     return tmp
+
 
 
 # ── PROCV: SKU + CUSTO + MARGEM ───────────────────────────────
