@@ -319,10 +319,40 @@ def fazer_procv_completo():
     H_D = PatternFill("solid", start_color="1A5276")
     HF  = Font(bold=True, color="FFFFFF", name="Arial", size=10)
     HA  = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    # Insere coluna % (desconto maximo) entre Status e Preco De
     col_map = {ws.cell(1,c).value: c for c in range(1, ws.max_column+1)}
+    ci_status    = col_map.get("Status")
+    ci_preco_por = col_map.get("Preco Por") or col_map.get("Pre\u00e7o Por")
+    ci_preco_min = col_map.get("Preco Minimo (R$)")
+    if ci_status and ci_preco_por and ci_preco_min:
+        col_insert = ci_status + 1
+        ws.insert_cols(col_insert)
+        col_map = {ws.cell(1,c).value: c for c in range(1, ws.max_column+1)}
+        ci_preco_por = col_map.get("Preco Por") or col_map.get("Pre\u00e7o Por")
+        ci_preco_min = col_map.get("Preco Minimo (R$)")
+        hdr = ws.cell(1, col_insert)
+        hdr.value = "%"
+        hdr.fill  = PatternFill("solid", start_color="2C3E50")
+        hdr.font  = Font(bold=True, color="FFFFFF", name="Arial", size=10)
+        hdr.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        fill_pct = PatternFill("solid", start_color="FEF9E7")
+        letra_por = get_column_letter(ci_preco_por)
+        letra_min = get_column_letter(ci_preco_min)
+        for row in range(2, ws.max_row + 1):
+            cell = ws.cell(row, col_insert)
+            cell.value = f"=IFERROR(({letra_por}{row}-{letra_min}{row})/{letra_por}{row},0)"
+            cell.number_format = "0.0%"
+            cell.fill  = fill_pct
+            cell.font  = Font(name="Arial", size=9, color="000000")
+            cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[get_column_letter(col_insert)].width = 8
+        col_map = {ws.cell(1,c).value: c for c in range(1, ws.max_column+1)}
+        FILLS["%"] = fill_pct
 
     for col in range(1, ws.max_column+1):
         cell = ws.cell(1, col)
+        if cell.value == "%":
+            continue
         cell.fill = H_D if cell.value in FILLS else H_N
         cell.font = HF
         cell.alignment = HA

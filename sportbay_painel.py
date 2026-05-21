@@ -821,9 +821,12 @@ class App:
 
     def _verificar_atualizacoes(self):
         try:
+            import sys as _sys
+            if str(PASTA) not in _sys.path:
+                _sys.path.insert(0, str(PASTA))
             from atualizador import verificar_e_atualizar, reiniciar_aplicacao
         except ImportError:
-            messagebox.showerror("Erro","Modulo atualizador.py nao encontrado."); return
+            messagebox.showerror("Erro","Modulo atualizador.py nao encontrado em " + str(PASTA)); return
 
         win = tk.Toplevel(self.root)
         win.title("Atualizacoes")
