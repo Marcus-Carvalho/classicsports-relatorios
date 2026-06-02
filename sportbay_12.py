@@ -228,8 +228,10 @@ def fazer_procv_completo():
 
     def buscar_titulo_sem_sufixo(titulo):
         palavras = titulo.strip().lower().split()
-        for n in range(1, 4):
+        max_remover = max(len(palavras) - 3, 4) if len(titulo) > 60 else 4
+        for n in range(1, max_remover):
             t = " ".join(palavras[:-n])
+            if not t: break
             if t in lookup_titulo_custo:
                 return lookup_titulo_custo[t]
         return None
@@ -279,16 +281,25 @@ def fazer_procv_completo():
     li_c = df_com.groupby("_tl")["Custo"].first().to_dict()
     li_m = df_com.groupby("_tl")["Margem Minima (%)"].first().to_dict()
     for idx in df_anuncios[df_anuncios["Custo"].isna()].index:
-        tl = str(df_anuncios.at[idx, col_titulo]).strip().lower().split()
-        for n in range(1, 4):
+        titulo_idx = str(df_anuncios.at[idx, col_titulo]).strip().lower()
+        tl = titulo_idx.split()
+        max_n = max(len(tl) - 3, 4) if len(titulo_idx) > 60 else 4
+        encontrou = False
+        for n in range(1, max_n):
+            if encontrou: break
             base = " ".join(tl[:-n])
-            for t in li_c:
-                if t.startswith(base) and len(t) > len(base):
-                    df_anuncios.at[idx, "Custo"] = li_c[t]
-                    df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(t, 16)
-                    break
-            else: continue
-            break
+            if not base: break
+            if base in li_c:
+                df_anuncios.at[idx, "Custo"] = li_c[base]
+                df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(base, 16)
+                encontrou = True
+            else:
+                for t in li_c:
+                    if t.startswith(base) and len(t) > len(base):
+                        df_anuncios.at[idx, "Custo"] = li_c[t]
+                        df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(t, 16)
+                        encontrou = True
+                        break
 
     print(f"  [OK] Custo: {df_anuncios['Custo'].notna().sum()}/{len(df_anuncios)} encontrados")
 
