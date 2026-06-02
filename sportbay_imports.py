@@ -296,6 +296,19 @@ def fazer_procv_completo():
                         encontrou = True
                         break
 
+    # MLB Origem Catalogo: busca custo pelo MLB do anuncio original
+    col_mlb        = "MLB"
+    col_mlb_origem = next((c for c in df_anuncios.columns
+                           if "origem" in str(c).lower() and "catalog" in str(c).lower().replace("\u00e1","a")), None)
+    if col_mlb_origem and col_mlb in df_anuncios.columns:
+        mlb_custo = df_anuncios[df_anuncios["Custo"].notna()].set_index(col_mlb)["Custo"].to_dict()
+        mlb_marg  = df_anuncios[df_anuncios["Custo"].notna()].set_index(col_mlb)["Margem Minima (%)"].to_dict()
+        for idx in df_anuncios[df_anuncios["Custo"].isna()].index:
+            mlb_orig = df_anuncios.at[idx, col_mlb_origem]
+            if pd.notna(mlb_orig) and str(mlb_orig).strip() in mlb_custo:
+                df_anuncios.at[idx, "Custo"]            = mlb_custo[str(mlb_orig).strip()]
+                df_anuncios.at[idx, "Margem Minima (%)"] = mlb_marg.get(str(mlb_orig).strip(), 16)
+
     print(f"  [OK] Custo: {df_anuncios['Custo'].notna().sum()}/{len(df_anuncios)} encontrados")
 
     # Reordena colunas
