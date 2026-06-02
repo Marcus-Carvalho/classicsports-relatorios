@@ -234,14 +234,33 @@ def fazer_procv_completo():
                 return lookup_titulo_custo[t]
         return None
 
+    def _sku_sem_sufixo(sku):
+        import re as _re
+        return _re.sub(r'-[A-Z]$', '', sku.strip().upper())
+
+    def _sku_base_progressivo(sku):
+        base = sku.strip().upper()
+        variantes = []
+        while base and base[-1].isalpha():
+            base = base[:-1]
+            variantes.append(base)
+        return variantes
+
     def buscar_custo(row):
         titulo = str(row.get("Titulo", row.get("Título", ""))).strip().lower()
         sku    = str(row.get("SKU","")).strip().upper() if pd.notna(row.get("SKU")) else ""
-        if sku   in lookup_sku_custo:    return lookup_sku_custo[sku]
+        if sku in lookup_sku_custo: return lookup_sku_custo[sku]
         if titulo in lookup_titulo_custo: return lookup_titulo_custo[titulo]
         c = buscar_titulo_sem_sufixo(titulo)
-        if c is not None:                return c
-        if sku in custo_kit_sis:         return custo_kit_sis[sku]
+        if c is not None: return c
+        if sku in custo_kit_sis: return custo_kit_sis[sku]
+        sku_s = _sku_sem_sufixo(sku)
+        if sku_s != sku:
+            if sku_s in custo_kit_sis:   return custo_kit_sis[sku_s]
+            if sku_s in lookup_sku_custo: return lookup_sku_custo[sku_s]
+        for base in _sku_base_progressivo(sku):
+            if base in lookup_sku_custo: return lookup_sku_custo[base]
+            if base in custo_kit_sis:    return custo_kit_sis[base]
         return None
 
     def buscar_margem(row):

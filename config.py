@@ -10,7 +10,7 @@ TABELA_PRECOS = "tabela_precos_20260408_1740.xlsx"
 TABELA_PRECO_SKU_KITS = "Preço SKU dos KITS - 08-04-26.xlsx"
 
 # Tabela Meus Kits (composicao dos kits do sistema)
-TABELA_MEUS_KITS = "meus_kits_2026-05-26.xlsx"
+TABELA_MEUS_KITS = "meus_kits_2026-06-02.xlsx"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURACAO - LOJAS E PERFIS DO CHROME
