@@ -212,7 +212,11 @@ def fazer_procv_completo():
         col_sk = detectar_coluna(df_meus_kits, ["sku_kit","sku kit"])
         col_pr = detectar_coluna(df_meus_kits, ["preco_sportbay","preco sportbay","sportbay"])
         col_qt = detectar_coluna(df_meus_kits, ["quantidade","qtd"])
+        col_si = detectar_coluna(df_meus_kits, ["sku_item","sku item"])
         if col_sk and col_pr and col_qt:
+            # Remove duplicatas (mesmo SKU_KIT + SKU_ITEM cadastrado mais de uma vez)
+            if col_si:
+                df_meus_kits = df_meus_kits.drop_duplicates(subset=[col_sk, col_si])
             custo_kit_sis = df_meus_kits.groupby(col_sk).apply(
                 lambda x: (x[col_pr] * x[col_qt]).sum()
             ).to_dict()
