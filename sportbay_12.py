@@ -274,8 +274,21 @@ def fazer_procv_completo():
     df_anuncios["Custo"]             = df_anuncios.apply(buscar_custo, axis=1)
     df_anuncios["Margem Minima (%)"] = df_anuncios.apply(buscar_margem, axis=1)
 
-    # Catalogo: busca em outros anuncios da propria planilha
+    # MLB Origem Catalogo: PRIMEIRO busca pelo MLB do anuncio original (mais confiavel)
     col_titulo = "Titulo" if "Titulo" in df_anuncios.columns else "Título"
+    col_mlb        = "MLB"
+    col_mlb_origem = next((c for c in df_anuncios.columns
+                           if "origem" in str(c).lower() and "catalog" in str(c).lower().replace("á","a")), None)
+    if col_mlb_origem and col_mlb in df_anuncios.columns:
+        mlb_custo = df_anuncios[df_anuncios["Custo"].notna()].set_index(col_mlb)["Custo"].to_dict()
+        mlb_marg  = df_anuncios[df_anuncios["Custo"].notna()].set_index(col_mlb)["Margem Minima (%)"].to_dict()
+        for idx in df_anuncios[df_anuncios["Custo"].isna()].index:
+            mlb_orig = df_anuncios.at[idx, col_mlb_origem]
+            if pd.notna(mlb_orig) and str(mlb_orig).strip() in mlb_custo:
+                df_anuncios.at[idx, "Custo"]            = mlb_custo[str(mlb_orig).strip()]
+                df_anuncios.at[idx, "Margem Minima (%)"] = mlb_marg.get(str(mlb_orig).strip(), 16)
+
+    # Catalogo: busca em outros anuncios da propria planilha (apenas titulos curtos para evitar matches errados)
     df_com = df_anuncios[df_anuncios["Custo"].notna()].copy()
     df_com["_tl"] = df_com[col_titulo].str.strip().str.lower()
     li_c = df_com.groupby("_tl")["Custo"].first().to_dict()
@@ -283,23 +296,36 @@ def fazer_procv_completo():
     for idx in df_anuncios[df_anuncios["Custo"].isna()].index:
         titulo_idx = str(df_anuncios.at[idx, col_titulo]).strip().lower()
         tl = titulo_idx.split()
-        max_n = max(len(tl) - 3, 4) if len(titulo_idx) > 60 else 4
-        encontrou = False
-        for n in range(1, max_n):
-            if encontrou: break
-            base = " ".join(tl[:-n])
-            if not base: break
-            if base in li_c:
-                df_anuncios.at[idx, "Custo"] = li_c[base]
-                df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(base, 16)
-                encontrou = True
-            else:
-                for t in li_c:
-                    if t.startswith(base) and len(t) > len(base):
-                        df_anuncios.at[idx, "Custo"] = li_c[t]
-                        df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(t, 16)
-                        encontrou = True
-                        break
+        # Para titulos longos (catalogos), so busca exata - busca por prefixo eh arriscada
+        if len(titulo_idx) > 60:
+            max_n = max(len(tl) - 3, 4)
+            encontrou = False
+            for n in range(1, max_n):
+                if encontrou: break
+                base = " ".join(tl[:-n])
+                if not base: break
+                if base in li_c:
+                    df_anuncios.at[idx, "Custo"] = li_c[base]
+                    df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(base, 16)
+                    encontrou = True
+        else:
+            # Titulos normais: busca exata e por prefixo
+            encontrou = False
+            for n in range(1, 4):
+                if encontrou: break
+                base = " ".join(tl[:-n])
+                if not base: break
+                if base in li_c:
+                    df_anuncios.at[idx, "Custo"] = li_c[base]
+                    df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(base, 16)
+                    encontrou = True
+                else:
+                    for t in li_c:
+                        if t.startswith(base) and len(t) > len(base):
+                            df_anuncios.at[idx, "Custo"] = li_c[t]
+                            df_anuncios.at[idx, "Margem Minima (%)"] = li_m.get(t, 16)
+                            encontrou = True
+                            break
 
     # MLB Origem Catalogo: busca custo pelo MLB do anuncio original
     col_mlb        = "MLB"
