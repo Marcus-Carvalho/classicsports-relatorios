@@ -480,15 +480,75 @@ async def main():
 
     try:
         async with async_playwright() as p:
+            # Pasta fixa para os downloads do robo (o Hub baixa aqui, nao na
+            # pasta interna do perfil temporario que era apagada no fim).
+            _PASTA_DL = PASTA_SAIDA / "_downloads_hub"
+            _PASTA_DL.mkdir(parents=True, exist_ok=True)
+
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=str(tmp_dir),
                 channel="chrome",  # Usa Chrome instalado do usuario
                 headless=False,
                 accept_downloads=True,
+                downloads_path=str(_PASTA_DL),
                 args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-infobars"],
                 ignore_default_args=["--enable-automation"],
             )
             await context.add_init_script("Object.defineProperty(navigator,'webdriver',{{get:()=>undefined}})")
+
+            # --- Captura de download VIGIANDO A PASTA FIXA -------------------
+            # O Hub entrega o relatorio de um jeito que NAO gera evento de
+            # download no Playwright. Com downloads_path definido, o arquivo cai
+            # na _PASTA_DL — as vezes com nome interno (GUID, sem extensao).
+            # Entao vigiamos QUALQUER arquivo novo que apareca e pare de crescer.
+            import os as _os
+
+            def _listar_arquivos(pasta):
+                try:
+                    r = {}
+                    for f in _os.listdir(pasta):
+                        fp = pasta / f
+                        if fp.is_file() and not f.endswith(".crdownload"):
+                            r[f] = fp.stat().st_size
+                    return r
+                except Exception:
+                    return {}
+
+            async def _baixar_relatorio(destino, timeout_min=40, antes=None):
+                """Espera um arquivo novo aparecer na _PASTA_DL e o move para o
+                destino. Nao depende de evento de download do Playwright."""
+                antes = antes if antes is not None else {}
+                _t = 0
+                achado = None
+                while _t < timeout_min * 60:
+                    atual = _listar_arquivos(_PASTA_DL)
+                    novos = [f for f in atual if f not in antes]
+                    baixando = any(x.endswith(".crdownload") for x in _os.listdir(_PASTA_DL)) if _PASTA_DL.exists() else False
+                    if novos and not baixando:
+                        cand = max(novos, key=lambda f: (_PASTA_DL / f).stat().st_mtime)
+                        p = _PASTA_DL / cand
+                        tam1 = p.stat().st_size
+                        await asyncio.sleep(2)
+                        if not p.exists():
+                            continue
+                        tam2 = p.stat().st_size
+                        if tam1 == tam2 and tam2 > 100:
+                            achado = p
+                            break
+                    if _t > 0 and _t % 60 == 0:
+                        print("  [AGUARDANDO] Fila do Hub (" + str(_t // 60) + "min)...")
+                    await asyncio.sleep(3)
+                    _t += 3
+                if achado is None:
+                    raise RuntimeError("Relatorio nao apareceu em " + str(timeout_min) + " min (fila do Hub)")
+                try:
+                    if Path(str(destino)).exists():
+                        Path(str(destino)).unlink()
+                except Exception:
+                    pass
+                shutil.move(str(achado), str(destino))
+                return True
+            # ------------------------------------------------------------------
             page = context.pages[0] if context.pages else await context.new_page()
 
             # LOGIN
@@ -634,10 +694,9 @@ async def main():
             print("  [OK] Resultados carregados!")
 
             print("  [DOWNLOAD] Exportando Excel...")
-            async with page.expect_download(timeout=1800000) as dl:
-                await page.evaluate("document.querySelector('#btnExportar').click()")
-            download = await dl.value
-            await download.save_as(str(PASTA_SAIDA / "listas_de_anuncios.xlsx"))
+            _antes = _listar_arquivos(_PASTA_DL)
+            await page.evaluate("document.querySelector('#btnExportar').click()")
+            await _baixar_relatorio(PASTA_SAIDA / "listas_de_anuncios.xlsx", antes=_antes)
             print("  [OK] listas_de_anuncios.xlsx salvo!\n")
 
             # RELATORIO 2: MLB x ID INTERNO
@@ -649,10 +708,16 @@ async def main():
             await page.wait_for_timeout(2000)
 
             print("  [DOWNLOAD] Clicando em Exportar Lista de Produtos...")
-            async with page.expect_download(timeout=1800000) as dl2:
-                await page.evaluate("document.querySelector('#btnExportar').click()")
-            download2 = await dl2.value
-            await download2.save_as(str(PASTA_SAIDA / "mlb_id_interno.xlsx"))
+            try:
+                await page.wait_for_function(
+                    "() => { var b = document.querySelector('#btnExportar'); return b && !b.classList.contains('disabled'); }",
+                    timeout=30000
+                )
+            except Exception:
+                pass
+            _antes = _listar_arquivos(_PASTA_DL)
+            await page.evaluate("document.querySelector('#btnExportar').click()")
+            await _baixar_relatorio(PASTA_SAIDA / "mlb_id_interno.xlsx", antes=_antes)
             print("  [OK] mlb_id_interno.xlsx salvo!\n")
 
             await context.close()
