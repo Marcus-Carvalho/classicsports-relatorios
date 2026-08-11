@@ -93,18 +93,24 @@ def _ler_versao_local():
 
 VERSAO_ATUAL = _ler_versao_local()
 
-BG      = "#001228"
-HEADER  = "#00142E"
-BLUE    = "#0070CC"
-CYAN    = "#00AAFF"
-CARD    = "#002850"
-BRIGHT  = "#E0ECFA"
-MUTED   = "#7A9DBE"
-SUCCESS = "#2ECC71"
-WARNING = "#F39C12"
-DANGER  = "#E74C3C"
-BTN     = "#0D2D4E"
-BTN_TXT = "#7ECFFF"
+# ── PALETA OFICIAL DA MARCA (manual Classic Sports) ───────────
+# Azul-marinho primario #00306A (Pantone 294 C) + azul vibrante + ciano
+BG      = "#08182F"   # fundo geral (navy escuro)
+HEADER  = "#00214A"   # topo/sidebar (azul-marinho)
+SIDEBAR = "#00193A"   # barra lateral
+BLUE    = "#1E6FFF"   # azul vibrante (acao primaria)
+CYAN    = "#29C1E8"   # ciano de destaque
+CARD    = "#0F2647"   # cards
+CARD_HL = "#12325C"   # card destacado
+BRIGHT  = "#FFFFFF"   # texto principal
+SOFT    = "#D1D8DB"   # cinza-claro da marca (Pantone 427 C)
+MUTED   = "#7FA8D4"   # texto secundario
+BORDER  = "#1C3A5E"   # borda dos cards
+SUCCESS = "#3DD68C"   # concluida
+WARNING = "#F5A623"   # em execucao
+DANGER  = "#E74C3C"   # erro
+BTN     = "#12325C"   # botao neutro
+BTN_TXT = "#29C1E8"   # texto botao neutro
 
 LOJAS = [
     ("Classic Barracao","sportbay_classic_barracao.py"),
@@ -187,8 +193,38 @@ def save_cfg_val(chave,valor):
 def set_icon(win):
     try:
         ico=PASTA/"icon.ico"
-        if ico.exists(): win.iconbitmap(str(ico))
-    except: pass
+        if ico.exists():
+            win.iconbitmap(default=str(ico))
+    except Exception:
+        pass
+
+def _bind_scroll(canvas):
+    # Liga a roda do mouse ao canvas so quando o ponteiro esta sobre ele.
+    # Evita o conflito de multiplos bind_all globais (que quebrava a rolagem).
+    def _on_wheel(e):
+        try:
+            canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+        except Exception:
+            pass
+        return "break"
+    def _enter(_e):
+        canvas.bind_all("<MouseWheel>", _on_wheel)
+    def _leave(_e):
+        canvas.unbind_all("<MouseWheel>")
+    canvas.bind("<Enter>", _enter)
+    canvas.bind("<Leave>", _leave)
+
+def _definir_app_id():
+    # Faz o Windows tratar como app proprio (icone na barra de tarefas),
+    # em vez de agrupar sob o python.exe.
+    try:
+        if sys.platform.startswith("win"):
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "ClassicSports.Relatorios.Painel")
+    except Exception:
+        pass
+_definir_app_id()
 
 def gerar_script(usuario,nome_loja,script_nome):
     sb=PASTA/script_nome
@@ -262,12 +298,12 @@ class App:
         lbl_err=tk.Label(body,text="",font=("Arial",9),bg=BG,fg=DANGER)
 
         tk.Label(body,text="USUÁRIO",font=("Arial",9,"bold"),bg=BG,fg=MUTED).pack(anchor="w")
-        eu=tk.Entry(body,textvariable=var_u,font=("Arial",12),bg="#001838",fg=BRIGHT,
-                    insertbackground=CYAN,relief="flat",highlightbackground="#1A4A7A",highlightthickness=1)
+        eu=tk.Entry(body,textvariable=var_u,font=("Arial",12),bg="#0A1F3D",fg=BRIGHT,
+                    insertbackground=CYAN,relief="flat",highlightbackground="#1C3A5E",highlightthickness=1)
         eu.pack(fill="x",ipady=8,pady=(2,14))
         tk.Label(body,text="SENHA",font=("Arial",9,"bold"),bg=BG,fg=MUTED).pack(anchor="w")
-        ep=tk.Entry(body,textvariable=var_p,font=("Arial",12),bg="#001838",fg=BRIGHT,
-                    insertbackground=CYAN,relief="flat",highlightbackground="#1A4A7A",highlightthickness=1,show="●")
+        ep=tk.Entry(body,textvariable=var_p,font=("Arial",12),bg="#0A1F3D",fg=BRIGHT,
+                    insertbackground=CYAN,relief="flat",highlightbackground="#1C3A5E",highlightthickness=1,show="●")
         ep.pack(fill="x",ipady=8,pady=(2,4))
         lbl_err.pack(pady=(2,14))
 
@@ -309,12 +345,12 @@ class App:
         lbl_err=tk.Label(body,text="",font=("Arial",9),bg=BG,fg=DANGER)
 
         tk.Label(body,text="NOVA SENHA",font=("Arial",9,"bold"),bg=BG,fg=MUTED).pack(anchor="w")
-        tk.Entry(body,textvariable=var_n,font=("Arial",12),bg="#001838",fg=BRIGHT,
-                 insertbackground=CYAN,relief="flat",highlightbackground="#1A4A7A",
+        tk.Entry(body,textvariable=var_n,font=("Arial",12),bg="#0A1F3D",fg=BRIGHT,
+                 insertbackground=CYAN,relief="flat",highlightbackground="#1C3A5E",
                  highlightthickness=1,show="●").pack(fill="x",ipady=8,pady=(2,12))
         tk.Label(body,text="CONFIRMAR SENHA",font=("Arial",9,"bold"),bg=BG,fg=MUTED).pack(anchor="w")
-        tk.Entry(body,textvariable=var_c,font=("Arial",12),bg="#001838",fg=BRIGHT,
-                 insertbackground=CYAN,relief="flat",highlightbackground="#1A4A7A",
+        tk.Entry(body,textvariable=var_c,font=("Arial",12),bg="#0A1F3D",fg=BRIGHT,
+                 insertbackground=CYAN,relief="flat",highlightbackground="#1C3A5E",
                  highlightthickness=1,show="●").pack(fill="x",ipady=8,pady=(2,4))
         lbl_err.pack(pady=(2,14))
 
@@ -368,26 +404,26 @@ class App:
         win2 = cv2.create_window((0,0), window=frm2, anchor="nw")
         frm2.bind("<Configure>", lambda e: cv2.configure(scrollregion=cv2.bbox("all")))
         cv2.bind("<Configure>", lambda e: cv2.itemconfig(win2, width=e.width))
-        cv2.bind_all("<MouseWheel>", lambda e: cv2.yview_scroll(int(-1*(e.delta/120)), "units"))
+        _bind_scroll(cv2)
 
         # Carrega credenciais existentes (do usuarios.json, como fallback)
         d = _load().get(self.usuario, {}).get("lojas", {})
         self._vars_config_creds = {}
         for nome, _ in LOJAS:
             c_atual = d.get(nome, {"email": "", "senha": ""})
-            row = tk.Frame(frm2, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+            row = tk.Frame(frm2, bg=CARD, highlightbackground="#1C3A5E", highlightthickness=1)
             row.pack(fill="x", pady=3)
             tk.Label(row, text=nome, font=("Arial",9,"bold"), bg=CARD, fg=BRIGHT,
                      width=18, anchor="w").pack(side="left", padx=(10,4), pady=8)
             ve = tk.StringVar(value=c_atual.get("email", ""))
             vs = tk.StringVar(value=c_atual.get("senha", ""))
-            tk.Entry(row, textvariable=ve, font=("Arial",9), bg="#001020", fg=BRIGHT,
+            tk.Entry(row, textvariable=ve, font=("Arial",9), bg="#04101F", fg=BRIGHT,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      width=24).pack(side="left", ipady=4, padx=(0,6))
-            tk.Entry(row, textvariable=vs, font=("Arial",9), bg="#001020", fg=BRIGHT,
+            tk.Entry(row, textvariable=vs, font=("Arial",9), bg="#04101F", fg=BRIGHT,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      width=18, show="●").pack(side="left", ipady=4)
             self._vars_config_creds[nome] = (ve, vs)
 
@@ -431,42 +467,53 @@ class App:
         self.status_lojas={n:"idle" for n,_ in LOJAS}
         self.widgets={}
 
-        # ── HEADER ────────────────────────────────────────────
-        hdr=tk.Frame(self.root,bg=HEADER,height=56); hdr.pack(fill="x"); hdr.pack_propagate(False)
-        tk.Label(hdr,text="Classic ",font=("Arial",16,"bold"),bg=HEADER,fg="white").pack(side="left",padx=(16,0))
-        tk.Label(hdr,text="Sports",  font=("Arial",16,"bold"),bg=HEADER,fg=CYAN).pack(side="left")
-        tk.Frame(hdr,bg=MUTED,width=1).pack(side="left",fill="y",padx=12,pady=10)
-        tk.Label(hdr,text="AUTOMAÇÃO DE RELATÓRIOS",font=("Arial",8),bg=HEADER,fg=MUTED).pack(side="left")
-        tk.Label(hdr,text=f"👤 {self.usuario}",font=("Arial",10,"bold"),bg=HEADER,fg=CYAN).pack(side="right",padx=(0,16))
-        tk.Label(hdr,text=f"v{VERSAO_ATUAL}",font=("Arial",8),bg=HEADER,fg=MUTED).pack(side="right",padx=(0,6))
+        # ── LAYOUT: SIDEBAR (esquerda) + CONTEUDO (direita) ───
+        wrap = tk.Frame(self.root, bg=BG); wrap.pack(fill="both", expand=True)
 
-        self.frm_nav=tk.Frame(hdr,bg=HEADER); self.frm_nav.pack(side="right",padx=8)
-        tk.Frame(self.root,bg=BLUE,height=2).pack(fill="x")
+        # ── SIDEBAR ───────────────────────────────────────────
+        side = tk.Frame(wrap, bg=SIDEBAR, width=170); side.pack(side="left", fill="y")
+        side.pack_propagate(False)
 
-        # ── CONTAINER ABAS ────────────────────────────────────
-        self.container=tk.Frame(self.root,bg=BG); self.container.pack(fill="both",expand=True)
+        # Logo
+        logo = tk.Frame(side, bg=SIDEBAR); logo.pack(fill="x", pady=(18,20), padx=16)
+        badge = tk.Frame(logo, bg=BLUE, width=32, height=32); badge.pack(side="left")
+        badge.pack_propagate(False)
+        tk.Label(badge, text="\u26a1", font=("Arial",14), bg=BLUE, fg="white").pack(expand=True)
+        tit = tk.Frame(logo, bg=SIDEBAR); tit.pack(side="left", padx=(9,0))
+        tk.Label(tit, text="Classic", font=("Arial",12,"bold"), bg=SIDEBAR, fg="white").pack(anchor="w")
+        tk.Label(tit, text="Sports", font=("Arial",12,"bold"), bg=SIDEBAR, fg=CYAN).pack(anchor="w")
+
+        # Itens de navegacao (sidebar)
+        self.nav_btns = {}
+        def nav_item(chave, icone, texto, comando):
+            f = tk.Frame(side, bg=SIDEBAR, cursor="hand2"); f.pack(fill="x", padx=8, pady=1)
+            lbl = tk.Label(f, text=f"  {icone}   {texto}", font=("Arial",10,"bold"),
+                           bg=SIDEBAR, fg=MUTED, anchor="w", padx=8, pady=9)
+            lbl.pack(fill="x")
+            for w in (f, lbl):
+                w.bind("<Button-1>", lambda e, c=comando: c())
+            self.nav_btns[chave] = (f, lbl)
+            return f
+
+        nav_item("lojas", "\U0001f3ea", "Lojas", lambda: self._mostrar("lojas"))
+        nav_item("senhas", "\U0001f512", "Senhas", lambda: self._mostrar("senhas"))
+        nav_item("params", "\u2699", "Par\u00e2metros", lambda: self._mostrar("params"))
+        nav_item("atualizar", "\u21bb", "Atualiza\u00e7\u00f5es", self._verificar_atualizacoes)
+
+        # Rodape da sidebar: usuario + versao
+        rod = tk.Frame(side, bg=SIDEBAR); rod.pack(side="bottom", fill="x", padx=16, pady=14)
+        tk.Label(rod, text=f"\U0001f464 {self.usuario}", font=("Arial",9,"bold"),
+                 bg=SIDEBAR, fg=CYAN, anchor="w").pack(fill="x")
+        tk.Label(rod, text=f"v{VERSAO_ATUAL}", font=("Arial",8),
+                 bg=SIDEBAR, fg=MUTED, anchor="w").pack(fill="x")
+
+        # ── CONTAINER DE CONTEUDO ─────────────────────────────
+        self.container=tk.Frame(wrap,bg=BG); self.container.pack(side="left", fill="both",expand=True)
 
         # Cria abas
         self._criar_aba_lojas()
         self._criar_aba_senhas()
         self._criar_aba_params()
-
-        # Botões nav
-        self.btn_lojas = tk.Button(self.frm_nav, text="LOJAS", font=("Arial",10,"bold"),
-                                   padx=14, pady=5, relief="flat", cursor="hand2",
-                                   command=lambda: self._mostrar("lojas"))
-        self.btn_senhas = tk.Button(self.frm_nav, text="SENHAS", font=("Arial",10,"bold"),
-                                    padx=14, pady=5, relief="flat", cursor="hand2",
-                                    command=lambda: self._mostrar("senhas"))
-        self.btn_params = tk.Button(self.frm_nav, text="PARÂMETROS", font=("Arial",10,"bold"),
-                                    padx=14, pady=5, relief="flat", cursor="hand2",
-                                    command=lambda: self._mostrar("params"))
-        tk.Button(self.frm_nav, text="Atualizacoes", font=("Arial",9,"bold"),
-                  bg=BTN, fg=BTN_TXT, padx=10, pady=5, relief="flat",
-                  cursor="hand2", command=self._verificar_atualizacoes).pack(side="left", padx=(8,0))
-        self.btn_lojas.pack(side="left", padx=2)
-        self.btn_senhas.pack(side="left", padx=2)
-        self.btn_params.pack(side="left", padx=2)
 
         self._mostrar("lojas")
 
@@ -474,48 +521,52 @@ class App:
         # Esconde todas as abas
         for frm in [self.frm_lojas, self.frm_senhas, self.frm_params_aba]:
             frm.pack_forget()
-        # Reset todos os botões
-        for btn in [self.btn_lojas, self.btn_senhas, self.btn_params]:
-            btn.config(bg=BTN, fg=BTN_TXT)
+        # Reset visual de todos os itens da sidebar
+        for chave,(f,lbl) in self.nav_btns.items():
+            f.config(bg=SIDEBAR); lbl.config(bg=SIDEBAR, fg=MUTED)
+        # Destaca o item ativo (fundo ciano)
+        if aba in self.nav_btns:
+            f,lbl = self.nav_btns[aba]
+            f.config(bg=CYAN); lbl.config(bg=CYAN, fg=HEADER)
         # Mostra aba selecionada
         if aba == "lojas":
-            self.btn_lojas.config(bg=BLUE, fg="white")
             self.frm_lojas.pack(fill="both", expand=True)
             self.root.update_idletasks()
-            larg = self.cv_lojas.winfo_width() or 1100
-            self._montar_grid(larg)
         elif aba == "senhas":
-            self.btn_senhas.config(bg=BLUE, fg="white")
             self.frm_senhas.pack(fill="both", expand=True)
         elif aba == "params":
-            self.btn_params.config(bg=BLUE, fg="white")
             self.frm_params_aba.pack(fill="both", expand=True)
 
     # ── ABA LOJAS ─────────────────────────────────────────────
     def _criar_aba_lojas(self):
         self.frm_lojas=tk.Frame(self.container,bg=BG)
 
-        # Stats
-        fs=tk.Frame(self.frm_lojas,bg=BG); fs.pack(fill="x",padx=16,pady=(14,8))
+        # Cabecalho: titulo + Rodar Todas
+        ft=tk.Frame(self.frm_lojas,bg=BG); ft.pack(fill="x",padx=22,pady=(18,4))
+        cab=tk.Frame(ft,bg=BG); cab.pack(side="left")
+        tk.Label(cab,text="Minhas Lojas",font=("Arial",15,"bold"),bg=BG,fg=BRIGHT,anchor="w").pack(anchor="w")
+        self.sub_lojas=tk.Label(cab,text="21 lojas",font=("Arial",9),bg=BG,fg=MUTED,anchor="w")
+        self.sub_lojas.pack(anchor="w")
+        btn_todas=tk.Button(ft,text="\u25b6  Rodar Todas",font=("Arial",10,"bold"),bg=BLUE,fg="white",
+                  padx=16,pady=7,relief="flat",cursor="hand2",activebackground=CYAN,
+                  command=self._rodar_todas); btn_todas.pack(side="right")
+
+        # Stats compactos (ícone + número)
+        fs=tk.Frame(self.frm_lojas,bg=BG); fs.pack(fill="x",padx=22,pady=(12,10))
         self.sv={k:tk.StringVar(value=v) for k,v in [("total","21"),("done","0"),("running","0"),("idle","21")]}
-        for i,(k,lbl,cor) in enumerate([("total","Total",BRIGHT),("done","Concluídas",SUCCESS),
-                                         ("running","Em Execução",WARNING),("idle","Aguardando",CYAN)]):
+        stats=[("done","\u2713","Conclu\u00eddas",SUCCESS),("running","\u27f3","Em Execu\u00e7\u00e3o",WARNING),
+               ("idle","\u25f7","Aguardando",CYAN)]
+        for i,(k,ic,lbl,cor) in enumerate(stats):
             fs.columnconfigure(i,weight=1)
-            c=tk.Frame(fs,bg=CARD,highlightbackground="#1A4A7A",highlightthickness=1)
-            c.grid(row=0,column=i,padx=4,sticky="ew")
-            tk.Label(c,textvariable=self.sv[k],font=("Arial",20,"bold"),bg=CARD,fg=cor).pack(pady=(8,2))
-            tk.Label(c,text=lbl,font=("Arial",8),bg=CARD,fg=MUTED).pack(pady=(0,8))
+            c=tk.Frame(fs,bg=CARD); c.grid(row=0,column=i,padx=(0 if i==0 else 6,0),sticky="ew")
+            inn=tk.Frame(c,bg=CARD); inn.pack(padx=14,pady=10,anchor="w")
+            tk.Label(inn,text=ic,font=("Arial",17),bg=CARD,fg=cor).pack(side="left",padx=(0,10))
+            txt=tk.Frame(inn,bg=CARD); txt.pack(side="left")
+            tk.Label(txt,textvariable=self.sv[k],font=("Arial",18,"bold"),bg=CARD,fg=BRIGHT).pack(anchor="w")
+            tk.Label(txt,text=lbl,font=("Arial",8),bg=CARD,fg=MUTED).pack(anchor="w")
 
-        # Top
-        ft=tk.Frame(self.frm_lojas,bg=BG); ft.pack(fill="x",padx=16,pady=(2,6))
-        tk.Label(ft,text="Minhas ",font=("Arial",13,"bold"),bg=BG,fg=BRIGHT).pack(side="left")
-        tk.Label(ft,text="Lojas",  font=("Arial",13,"bold"),bg=BG,fg=CYAN).pack(side="left")
-        tk.Button(ft,text="▶▶ Rodar Todas",font=("Arial",9,"bold"),bg=BTN,fg=BTN_TXT,
-                  padx=12,pady=4,relief="flat",cursor="hand2",
-                  command=self._rodar_todas).pack(side="right")
-
-        # Canvas + scrollbar
-        fo=tk.Frame(self.frm_lojas,bg=BG); fo.pack(fill="both",expand=True,padx=16,pady=(0,8))
+        # Canvas + scrollbar (lista vertical de linhas)
+        fo=tk.Frame(self.frm_lojas,bg=BG); fo.pack(fill="both",expand=True,padx=22,pady=(2,12))
         sb=ttk.Scrollbar(fo,orient="vertical"); sb.pack(side="right",fill="y")
         self.cv_lojas=tk.Canvas(fo,bg=BG,highlightthickness=0,yscrollcommand=sb.set)
         self.cv_lojas.pack(side="left",fill="both",expand=True)
@@ -523,45 +574,47 @@ class App:
         self.frm_grid=tk.Frame(self.cv_lojas,bg=BG)
         self._win_lojas=self.cv_lojas.create_window((0,0),window=self.frm_grid,anchor="nw")
         self.frm_grid.bind("<Configure>",lambda e:self.cv_lojas.configure(scrollregion=self.cv_lojas.bbox("all")))
-        self.cv_lojas.bind("<Configure>",self._on_lojas_resize)
-        self.cv_lojas.bind_all("<MouseWheel>",lambda e:self.cv_lojas.yview_scroll(int(-1*(e.delta/120)),"units"))
+        self.cv_lojas.bind("<Configure>",lambda e:self.cv_lojas.itemconfig(self._win_lojas,width=e.width))
+        _bind_scroll(self.cv_lojas)
 
-        # Cria cards
+        # Cria uma LINHA por loja
         for nome,script in LOJAS:
-            card=tk.Frame(self.frm_grid,bg=CARD,highlightbackground="#1A4A7A",highlightthickness=1)
-            barra=tk.Frame(card,bg=BLUE,width=4); barra.pack(side="left",fill="y")
-            inn=tk.Frame(card,bg=CARD); inn.pack(side="left",fill="both",expand=True,padx=10,pady=10)
-            tk.Label(inn,text=nome,font=("Arial",11,"bold"),bg=CARD,fg=BRIGHT,anchor="w").pack(fill="x")
-            lbl_s=tk.Label(inn,text="Aguardando",font=("Arial",8,"bold"),bg=CARD,fg=MUTED,anchor="w")
-            lbl_s.pack(fill="x",pady=(2,6))
-            fb=tk.Frame(inn,bg=CARD); fb.pack(fill="x")
-            btn_r=tk.Button(fb,text="▶ Rodar",font=("Arial",9,"bold"),bg=BTN,fg=BTN_TXT,
-                            padx=8,pady=3,relief="flat",cursor="hand2",
+            card=tk.Frame(self.frm_grid,bg=CARD,highlightbackground=BORDER,highlightthickness=1)
+            card.pack(fill="x",pady=4)
+            barra=tk.Frame(card,bg=CYAN,width=4); barra.pack(side="left",fill="y")
+            inn=tk.Frame(card,bg=CARD); inn.pack(side="left",fill="both",expand=True,padx=14,pady=11)
+
+            # Linha principal: [icone+nome+status] .... [botoes]
+            topo=tk.Frame(inn,bg=CARD); topo.pack(fill="x")
+            esq=tk.Frame(topo,bg=CARD); esq.pack(side="left")
+            tk.Label(esq,text="\U0001f3ea",font=("Arial",13),bg=CARD,fg=MUTED).pack(side="left",padx=(0,10))
+            txt=tk.Frame(esq,bg=CARD); txt.pack(side="left")
+            tk.Label(txt,text=nome,font=("Arial",12,"bold"),bg=CARD,fg=BRIGHT,anchor="w").pack(anchor="w")
+            lbl_s=tk.Label(txt,text="\u25f7  Aguardando",font=("Arial",9,"bold"),bg=CARD,fg=CYAN,anchor="w")
+            lbl_s.pack(anchor="w")
+
+            dir_=tk.Frame(topo,bg=CARD); dir_.pack(side="right")
+            btn_r=tk.Button(dir_,text="\u25b6 Rodar",font=("Arial",9,"bold"),bg=BTN,fg=BTN_TXT,
+                            padx=18,pady=6,relief="flat",cursor="hand2",activebackground=CARD_HL,
                             command=lambda n=nome,s=script:self._rodar(n,s))
-            btn_r.pack(side="left",fill="x",expand=True,padx=(0,4))
-            tk.Button(fb,text="📁",font=("Arial",10),bg=BTN,fg=BTN_TXT,padx=6,pady=3,
-                      relief="flat",cursor="hand2",
+            btn_r.pack(side="left",padx=(0,8))
+            tk.Button(dir_,text="\U0001f4c1",font=("Arial",11),bg=BTN,fg=BTN_TXT,padx=9,pady=5,
+                      relief="flat",cursor="hand2",activebackground=CARD_HL,
                       command=lambda n=nome:self._pasta(n)).pack(side="right")
-            log=scrolledtext.ScrolledText(inn,height=3,font=("Courier New",7),
-                                          bg="#000D1A",fg="#5EE89A",state="disabled",relief="flat")
+
+            log=scrolledtext.ScrolledText(inn,height=4,font=("Courier New",7),
+                                          bg="#04101F",fg="#5EE89A",state="disabled",relief="flat")
             self.widgets[nome]={"card":card,"barra":barra,"status":lbl_s,"btn":btn_r,"log":log}
-
-    def _on_lojas_resize(self,e):
-        self.cv_lojas.itemconfig(self._win_lojas,width=e.width)
-        self._montar_grid(e.width)
-
-    def _montar_grid(self,larg=1100):
-        ncols=max(1,int(larg)//260)
-        for i,(nome,_) in enumerate(LOJAS):
-            w=self.widgets.get(nome)
-            if w: w["card"].grid(row=i//ncols,column=i%ncols,padx=5,pady=5,sticky="nsew")
-        for c in range(ncols): self.frm_grid.columnconfigure(c,weight=1)
 
     def _upd_stats(self):
         v=list(self.status_lojas.values())
         self.sv["done"].set(str(v.count("done")))
         self.sv["running"].set(str(v.count("running")))
         self.sv["idle"].set(str(v.count("idle")))
+        try:
+            self.sub_lojas.config(text=f"21 lojas \u00b7 {v.count('done')} conclu\u00eddas")
+        except Exception:
+            pass
 
     def _rodar(self,nome,script):
         c=get_cred_loja(self.usuario,nome)
@@ -573,8 +626,8 @@ class App:
         if not st: messagebox.showerror("Erro",f"Script não encontrado: {script}"); return
         w=self.widgets[nome]
         self.status_lojas[nome]="running"
-        w["btn"].config(text="⏳ Rodando...",bg=WARNING,fg="#001228",state="disabled")
-        w["status"].config(text="Em execução...",fg=WARNING)
+        w["btn"].config(text="\u27f3 Rodando...",bg=WARNING,fg="#08182F",state="disabled")
+        w["status"].config(text="\u27f3  Em execu\u00e7\u00e3o...",fg=WARNING)
         w["card"].config(highlightbackground=WARNING); w["barra"].config(bg=WARNING)
         w["log"].config(state="normal"); w["log"].delete(1.0,tk.END)
         w["log"].insert(tk.END,f"Iniciando {nome}...\n"); w["log"].config(state="disabled")
@@ -599,9 +652,9 @@ class App:
                 if pu.exists(): shutil.rmtree(str(pu))
                 shutil.move(str(pt),str(pu))
             cor=SUCCESS if ok else DANGER
-            w["btn"].config(text="✓ Concluído" if ok else "✗ Erro",bg=cor,
-                            fg="#001228" if ok else "white",state="normal")
-            w["status"].config(text="Concluído" if ok else "Erro",fg=cor)
+            w["btn"].config(text="\u2713 Conclu\u00eddo" if ok else "\u2717 Erro",bg=cor,
+                            fg="#08182F" if ok else "white",state="normal")
+            w["status"].config(text="\u2713  Conclu\u00eddo" if ok else "\u2717  Erro",fg=cor)
             w["card"].config(highlightbackground=cor); w["barra"].config(bg=cor)
             self.status_lojas[nome]="done" if ok else "error"; self._upd_stats()
         threading.Thread(target=run,daemon=True).start()
@@ -635,14 +688,14 @@ class App:
         win = cv.create_window((0, 0), window=frm, anchor="nw")
         frm.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
         cv.bind("<Configure>", lambda e: cv.itemconfig(win, width=e.width))
-        cv.bind_all("<MouseWheel>", lambda e: cv.yview_scroll(int(-1*(e.delta/120)), "units"))
+        _bind_scroll(cv)
 
         # Seção credenciais
-        o = tk.Frame(frm, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+        o = tk.Frame(frm, bg=CARD, highlightbackground="#1C3A5E", highlightthickness=1)
         o.pack(fill="x", padx=16, pady=(14,5))
         tk.Label(o, text="Credenciais SportBay Hub — Suas Lojas",
                  font=("Arial",10,"bold"), bg=CARD, fg=CYAN).pack(anchor="w", padx=14, pady=(10,4))
-        tk.Frame(o, bg="#1A4A7A", height=1).pack(fill="x", padx=14)
+        tk.Frame(o, bg="#1C3A5E", height=1).pack(fill="x", padx=14)
         sc = tk.Frame(o, bg=CARD); sc.pack(fill="x", padx=14, pady=10)
 
         tk.Label(sc, text="Configure o email e senha do SportBay Hub para cada loja.",
@@ -656,15 +709,15 @@ class App:
                      width=16, anchor="w").pack(side="left")
             tk.Label(row, text="Email:", font=("Arial",8), bg=CARD, fg=MUTED).pack(side="left", padx=(0,3))
             ve = tk.StringVar(value=c.get("email",""))
-            tk.Entry(row, textvariable=ve, font=("Arial",9), bg="#001020", fg=BRIGHT,
+            tk.Entry(row, textvariable=ve, font=("Arial",9), bg="#04101F", fg=BRIGHT,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      width=26).pack(side="left", ipady=3, padx=(0,8))
             tk.Label(row, text="Senha:", font=("Arial",8), bg=CARD, fg=MUTED).pack(side="left", padx=(0,3))
             vs = tk.StringVar(value=c.get("senha",""))
-            tk.Entry(row, textvariable=vs, font=("Arial",9), bg="#001020", fg=BRIGHT,
+            tk.Entry(row, textvariable=vs, font=("Arial",9), bg="#04101F", fg=BRIGHT,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      width=18, show="●").pack(side="left", ipady=3)
             self.vars_cred[nome] = (ve, vs)
 
@@ -673,11 +726,11 @@ class App:
                   command=self._salvar_creds).pack(anchor="w", pady=(10,0))
 
         # Seção trocar senha
-        o2 = tk.Frame(frm, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+        o2 = tk.Frame(frm, bg=CARD, highlightbackground="#1C3A5E", highlightthickness=1)
         o2.pack(fill="x", padx=16, pady=5)
         tk.Label(o2, text="Alterar Minha Senha", font=("Arial",10,"bold"),
                  bg=CARD, fg=CYAN).pack(anchor="w", padx=14, pady=(10,4))
-        tk.Frame(o2, bg="#1A4A7A", height=1).pack(fill="x", padx=14)
+        tk.Frame(o2, bg="#1C3A5E", height=1).pack(fill="x", padx=14)
         ss = tk.Frame(o2, bg=CARD); ss.pack(fill="x", padx=14, pady=10)
 
         fp2 = tk.Frame(ss, bg=CARD); fp2.pack(fill="x")
@@ -687,9 +740,9 @@ class App:
             f = tk.Frame(fp2, bg=CARD); f.grid(row=0, column=ci, padx=6, sticky="ew")
             tk.Label(f, text=lbl.upper(), font=("Arial",8,"bold"), bg=CARD, fg=MUTED).pack(anchor="w")
             var = tk.StringVar(); self.vars_pw.append(var)
-            tk.Entry(f, textvariable=var, font=("Arial",11), bg="#001020", fg=BRIGHT,
+            tk.Entry(f, textvariable=var, font=("Arial",11), bg="#04101F", fg=BRIGHT,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      show=show).pack(fill="x", ipady=6)
         tk.Button(ss, text="🔒  Alterar Senha", font=("Arial",10,"bold"),
                   bg=BLUE, fg="white", relief="flat", cursor="hand2", pady=7,
@@ -700,11 +753,11 @@ class App:
         self.frm_params_aba = tk.Frame(self.container, bg=BG)
 
         # Seção tabelas
-        o = tk.Frame(self.frm_params_aba, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+        o = tk.Frame(self.frm_params_aba, bg=CARD, highlightbackground="#1C3A5E", highlightthickness=1)
         o.pack(fill="x", padx=16, pady=(14,5))
         tk.Label(o, text="Tabelas de Referência", font=("Arial",10,"bold"),
                  bg=CARD, fg=CYAN).pack(anchor="w", padx=14, pady=(10,4))
-        tk.Frame(o, bg="#1A4A7A", height=1).pack(fill="x", padx=14)
+        tk.Frame(o, bg="#1C3A5E", height=1).pack(fill="x", padx=14)
         st = tk.Frame(o, bg=CARD); st.pack(fill="x", padx=14, pady=10)
 
         cfg = load_cfg()
@@ -723,8 +776,8 @@ class App:
             tk.Label(f, text=lbl.upper(), font=("Arial",8,"bold"), bg=CARD, fg=MUTED).pack(anchor="w")
             var = tk.StringVar(value=val); self.vars_tab[chave] = var
             fr = tk.Frame(f, bg=CARD); fr.pack(fill="x")
-            ent = tk.Entry(fr, textvariable=var, font=("Arial",9), bg="#001020", fg=BRIGHT,
-                     relief="flat", highlightbackground="#1A4A7A", highlightthickness=1)
+            ent = tk.Entry(fr, textvariable=var, font=("Arial",9), bg="#04101F", fg=BRIGHT,
+                     relief="flat", highlightbackground="#1C3A5E", highlightthickness=1)
             ent.pack(side="left", fill="x", expand=True, ipady=5)
             ent.bind("<Key>", lambda e: "break")  # Impede digitação mas mostra o valor
             # Label de status dinâmico
@@ -769,11 +822,11 @@ class App:
                       command=upload).pack(side="right", padx=(3,0))
 
         # Seção parâmetros financeiros
-        o2 = tk.Frame(self.frm_params_aba, bg=CARD, highlightbackground="#1A4A7A", highlightthickness=1)
+        o2 = tk.Frame(self.frm_params_aba, bg=CARD, highlightbackground="#1C3A5E", highlightthickness=1)
         o2.pack(fill="x", padx=16, pady=5)
         tk.Label(o2, text="Parâmetros Financeiros", font=("Arial",10,"bold"),
                  bg=CARD, fg=CYAN).pack(anchor="w", padx=14, pady=(10,4))
-        tk.Frame(o2, bg="#1A4A7A", height=1).pack(fill="x", padx=14)
+        tk.Frame(o2, bg="#1C3A5E", height=1).pack(fill="x", padx=14)
         sf = tk.Frame(o2, bg=CARD); sf.pack(fill="x", padx=14, pady=10)
 
         tk.Label(sf, text="Usados para calcular o Preço Mínimo de venda.",
@@ -790,9 +843,9 @@ class App:
             f = tk.Frame(fp, bg=CARD); f.grid(row=0, column=ci, padx=8, sticky="ew")
             tk.Label(f, text=lbl.upper(), font=("Arial",8,"bold"), bg=CARD, fg=MUTED).pack(anchor="w")
             var = tk.StringVar(value=val)
-            tk.Entry(f, textvariable=var, font=("Arial",18,"bold"), bg="#001020", fg=CYAN,
+            tk.Entry(f, textvariable=var, font=("Arial",18,"bold"), bg="#04101F", fg=CYAN,
                      insertbackground=CYAN, relief="flat",
-                     highlightbackground="#1A4A7A", highlightthickness=1,
+                     highlightbackground="#1C3A5E", highlightthickness=1,
                      justify="center").pack(fill="x", ipady=10)
             tk.Label(f, text=hint, font=("Arial",8), bg=CARD, fg=MUTED).pack(anchor="w", pady=(3,0))
 

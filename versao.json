@@ -1,4 +1,4 @@
 ﻿{
-  "versao": "1.0.16",
-  "notas": "Corrige download dos relatorios apos mudanca na entrega do Hub"
+  "versao": "1.0.17",
+  "notas": "Novo visual do painel (sidebar, cores da marca) + rolagem e icone"
 }
