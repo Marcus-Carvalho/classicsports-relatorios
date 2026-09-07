@@ -182,11 +182,33 @@ def fazer_procv_completo():
     from openpyxl.styles import PatternFill, Font, Alignment
     from openpyxl.utils import get_column_letter
 
+    def _ler_xlsx_auto(arq, chaves):
+        """Le um xlsx detectando se o cabecalho esta na linha 1 ou 2.
+        Escolhe o skiprows em que APARECE alguma das colunas-chave.
+        Corrige planilhas novas (cabecalho na linha 1) e antigas (linha 2)."""
+        import pandas as _pd
+        def _tem(cols):
+            n = ["".join(str(c).lower().split()).replace("_","") for c in cols]
+            return any(any(k in c for c in n) for k in chaves)
+        try:
+            d0 = _pd.read_excel(arq)
+            if _tem(d0.columns):
+                return d0
+        except Exception:
+            d0 = _pd.DataFrame()
+        try:
+            d1 = _pd.read_excel(arq, skiprows=1)
+            if _tem(d1.columns):
+                return d1
+        except Exception:
+            pass
+        return d0
+
     df_anuncios  = pd.read_excel(arq_anuncios)
     df_sku_tab   = pd.read_excel(arq_mlb_sku)
-    df_precos    = pd.read_excel(arq_tabela_precos, skiprows=1) if arq_tabela_precos.exists() else pd.DataFrame()
-    df_kits      = pd.read_excel(arq_preco_sku_kits)            if arq_preco_sku_kits.exists() else pd.DataFrame()
-    df_meus_kits = pd.read_excel(arq_meus_kits)                 if arq_meus_kits.exists()      else pd.DataFrame()
+    df_precos    = _ler_xlsx_auto(arq_tabela_precos, ["sku"])            if arq_tabela_precos.exists() else pd.DataFrame()
+    df_kits      = _ler_xlsx_auto(arq_preco_sku_kits, ["produto","custo"]) if arq_preco_sku_kits.exists() else pd.DataFrame()
+    df_meus_kits = _ler_xlsx_auto(arq_meus_kits, ["skukit","sku"])       if arq_meus_kits.exists()      else pd.DataFrame()
 
     # PROCV 1: MLB -> SKU
     col_mlb_an  = detectar_coluna(df_anuncios, ["mlb","id do anuncio","item_id","anuncio"])
