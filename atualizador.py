@@ -58,7 +58,7 @@ def get_versao_local():
     if not ARQ_VERSION_LOCAL.exists():
         return "0.0.0"
     try:
-        dados = json.loads(ARQ_VERSION_LOCAL.read_text(encoding="utf-8"))
+        dados = json.loads(ARQ_VERSION_LOCAL.read_text(encoding="utf-8-sig"))
         return dados.get("versao", "0.0.0")
     except Exception:
         return "0.0.0"
@@ -67,7 +67,8 @@ def get_versao_remota():
     """Busca a versão mais recente no GitHub. Retorna (versao, notas) ou None."""
     try:
         with urllib.request.urlopen(URL_VERSION, timeout=5) as resp:
-            dados = json.loads(resp.read().decode("utf-8"))
+            # utf-8-sig tolera BOM (PowerShell Set-Content grava com BOM)
+            dados = json.loads(resp.read().decode("utf-8-sig"))
             return dados.get("versao", "0.0.0"), dados.get("notas", "")
     except Exception:
         return None, None
